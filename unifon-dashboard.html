@@ -310,6 +310,7 @@
   <div class="maintabs" id="mainTabs">
     <button class="maintab active" data-tab="live">Live</button>
     <button class="maintab" data-tab="reports">Reports</button>
+    <button class="maintab" data-tab="attendance">Attendance</button>
   </div>
 
   <div class="tabpanel" id="panel-live">
@@ -450,6 +451,40 @@
       <div class="empty">No reports loaded yet. Upload one or more Unifon exports above to get started.</div>
     </div>
 
+  </div>
+
+  <div class="tabpanel" id="panel-attendance" style="display:none;">
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; flex-wrap:wrap; gap:8px;">
+        <h2 style="margin-bottom:0;">Team schedule — expected start times</h2>
+        <button class="btn small" id="scheduleSaveBtn">Save schedule</button>
+      </div>
+      <div style="font-size:11px; color:var(--grey-3); margin-bottom:10px;">Set each person's expected start time per weekday. Leave a day blank to skip flagging on that day. Shared with everyone viewing this dashboard.</div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th></tr>
+          </thead>
+          <tbody id="scheduleTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+        <h2 style="margin-bottom:0;">Login history</h2>
+        <span style="font-size:11px; color:var(--grey-3);">From live capture — last 30 days</span>
+      </div>
+      <div class="livechips" id="attendanceChips"></div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Name</th><th>First login</th><th>Scheduled</th><th>Status</th></tr>
+          </thead>
+          <tbody id="attendanceTbody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
 <div class="toast" id="toast"></div>
@@ -1390,11 +1425,14 @@ function switchMainTab(tab){
   document.querySelectorAll('.maintab').forEach(t => t.classList.toggle('active', t.getAttribute('data-tab')===tab));
   document.getElementById('panel-live').style.display = tab==='live' ? 'block' : 'none';
   document.getElementById('panel-reports').style.display = tab==='reports' ? 'block' : 'none';
+  document.getElementById('panel-attendance').style.display = tab==='attendance' ? 'block' : 'none';
   localStorage.setItem('unifon-main-tab', tab);
+  if(tab==='attendance') loadScheduleThenRender();
 }
 document.querySelectorAll('.maintab').forEach(t=>{
   t.addEventListener('click', ()=> switchMainTab(t.getAttribute('data-tab')));
 });
+document.getElementById('scheduleSaveBtn').addEventListener('click', saveSchedule);
 
 const drop = document.getElementById('drop');
 const fileInput = document.getElementById('fileInput');
@@ -1721,6 +1759,142 @@ let liveFilter    = 'All';
 const waitTimeSamples = []; // {ts, avgWait} — accumulated across polls today, for sparkline
 let liveConnected = false;
 
+/* ---------- attendance (schedule + login history) ---------- */
+const WEEKDAY_KEYS = ['sun','mon','tue','wed','thu','fri','sat'];
+const WEEKDAY_COLS = ['mon','tue','wed','thu','fri','sat','sun']; // display order, Mon first
+let schedule = {}; // { [name]: { mon:"08:00", tue:"08:00", ... } } — blank/missing = not flagged
+let attendanceFilter = 'All';
+
+function attendanceNames(){
+  return Array.from(new Set(liveEvents.map(e=>e.name))).sort((a,b)=>a.localeCompare(b));
+}
+
+async function loadScheduleThenRender(){
+  try{
+    const res = await fetch(liveUrl('schedule.json'), {cache:'no-store'});
+    if(res.ok) schedule = await res.json();
+  }catch(e){ /* keep whatever schedule we already have client-side */ }
+  renderAttendance();
+}
+
+function renderScheduleEditor(){
+  const names = attendanceNames();
+  const tbody = document.getElementById('scheduleTbody');
+  if(names.length===0){
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty">No agents seen yet from live capture — the schedule fills in once login activity has been captured.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = names.map(name=>{
+    const row = schedule[name] || {};
+    const cells = WEEKDAY_COLS.map(day=>
+      `<td><input type="time" class="search-input schedule-input" data-name="${name}" data-day="${day}" value="${row[day]||''}" style="width:100px;"></td>`
+    ).join('');
+    return `<tr><td>${name}</td>${cells}</tr>`;
+  }).join('');
+}
+
+async function saveSchedule(){
+  const next = {};
+  document.querySelectorAll('#scheduleTbody .schedule-input').forEach(inp=>{
+    const name = inp.getAttribute('data-name'), day = inp.getAttribute('data-day');
+    if(!next[name]) next[name] = {};
+    if(inp.value) next[name][day] = inp.value;
+  });
+  schedule = next;
+  try{
+    const res = await fetch(liveUrl('schedule.json'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(schedule)
+    });
+    if(!res.ok) throw new Error('bad response');
+    showToast('Schedule saved');
+  }catch(e){
+    showToast('Could not save schedule — check the capture server is reachable');
+  }
+  renderAttendance();
+}
+
+function fmtDateKey(ts){
+  const d = new Date(ts);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function fmtDateLabel(dateKey){
+  const [y,m,d] = dateKey.split('-').map(Number);
+  return new Date(y, m-1, d).toLocaleDateString(undefined, {weekday:'short', day:'2-digit', month:'short'});
+}
+
+function computeAttendanceRows(){
+  const firstLoginByDayName = new Map(); // "dateKey|name" -> earliest ts
+  for(const e of liveEvents){
+    if(e.direction !== 'in') continue;
+    const key = fmtDateKey(e.ts) + '|' + e.name;
+    const cur = firstLoginByDayName.get(key);
+    if(cur===undefined || e.ts < cur) firstLoginByDayName.set(key, e.ts);
+  }
+  const rows = [];
+  for(const [key, ts] of firstLoginByDayName.entries()){
+    const [dateKey, name] = [key.slice(0,10), key.slice(11)];
+    const d = new Date(ts);
+    const dayKey = WEEKDAY_KEYS[d.getDay()];
+    const scheduledTime = (schedule[name] || {})[dayKey] || null;
+    let status, late = false, scheduledLabel = '—';
+    if(scheduledTime){
+      scheduledLabel = scheduledTime;
+      const [sh, sm] = scheduledTime.split(':').map(Number);
+      const scheduledTs = new Date(d.getFullYear(), d.getMonth(), d.getDate(), sh, sm).getTime();
+      if(ts > scheduledTs){
+        late = true;
+        const lateMin = Math.round((ts - scheduledTs)/60000);
+        status = `Late by ${lateMin}m`;
+      } else {
+        status = 'On time';
+      }
+    } else {
+      status = 'No schedule set';
+    }
+    rows.push({ dateKey, name, ts, scheduledLabel, status, late });
+  }
+  rows.sort((a,b) => b.ts - a.ts);
+  return rows;
+}
+
+function renderAttendance(){
+  renderScheduleEditor();
+  renderAttendanceTable();
+}
+
+// Only the login-history table — safe to call on every poll without
+// clobbering whatever the user is currently typing into the schedule inputs.
+function renderAttendanceTable(){
+  const rows = computeAttendanceRows();
+
+  const names = ['All', ...attendanceNames()];
+  const chipsEl = document.getElementById('attendanceChips');
+  chipsEl.innerHTML = names.map(n=>
+    `<span class="livechip ${attendanceFilter===n?'active':''}" data-name="${n}">${n}</span>`
+  ).join('');
+  chipsEl.querySelectorAll('.livechip').forEach(c=>{
+    c.addEventListener('click', ()=>{ attendanceFilter = c.getAttribute('data-name'); renderAttendance(); });
+  });
+
+  const filtered = attendanceFilter==='All' ? rows : rows.filter(r=>r.name===attendanceFilter);
+  const tbody = document.getElementById('attendanceTbody');
+  if(filtered.length===0){
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty">No login history captured yet.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filtered.map(r=>`
+    <tr>
+      <td>${fmtDateLabel(r.dateKey)}</td>
+      <td>${r.name}</td>
+      <td>${fmtTime(r.ts)}</td>
+      <td>${r.scheduledLabel}</td>
+      <td style="color:${r.late?'var(--red)':(r.status==='On time'?'var(--green)':'var(--grey-3)')};">${r.status}</td>
+    </tr>
+  `).join('');
+}
+
 function fmtWait(seconds){
   if(!seconds || seconds <= 0) return '—';
   if(seconds < 60) return Math.round(seconds)+'s';
@@ -1837,6 +2011,7 @@ async function pollLive(){
   renderWallboard();
   renderLive();
   renderTV();
+  renderAttendanceTable();
   updateLiveAge();
 }
 
