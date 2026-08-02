@@ -1,0 +1,2288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Munu — Unifon Agent Performance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600&family=Fira+Sans:wght@700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --navy:#000743; --navy-hover:#002875; --lightblue:#D6F3FF; --white:#F9FBFF; --foreground:#0D101A;
+    --red:#CF2141; --green:#008447; --yellow:#F6C34A; --yellow-text:#925019;
+    --grey-1:#EEF2F7; --grey-2:#C9D2E0; --grey-3:#6B7690;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--white); color:var(--foreground);
+    font-family:'Inter',system-ui,sans-serif; font-weight:500; letter-spacing:-0.01em;
+    padding:24px; line-height:1.4;
+  }
+  h1,h2{ font-family:'Inter',sans-serif; font-weight:700; letter-spacing:-0.01em; margin:0; color:var(--navy); }
+  h3{ font-family:'Inter',sans-serif; font-weight:600; letter-spacing:-0.01em; margin:0; color:var(--foreground); }
+  h1{ font-size:24px; }
+  h2{ font-size:20px; margin-bottom:10px; }
+  .wrap{ max-width:1180px; margin:0 auto; }
+  .top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; flex-wrap:wrap; gap:12px;}
+  .brand{ display:flex; align-items:center; gap:10px;}
+  .brand .dot{ width:10px;height:10px;border-radius:50%;background:var(--navy);}
+  .brand span{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:20px; color:var(--navy);}
+  .sub{ color:var(--grey-3); font-size:13px; margin-top:2px;}
+
+  .card{ background:#fff; border:1px solid var(--grey-1); border-radius:8px; padding:18px 20px; margin-bottom:16px; }
+
+  .drop{
+    border:2px dashed var(--grey-2); border-radius:8px; padding:22px; text-align:center;
+    cursor:pointer; transition:border-color .15s, background .15s; background:var(--white);
+  }
+  .drop.drag{ border-color:var(--navy); background:var(--lightblue); }
+  .drop input{ display:none; }
+  .drop .lbl{ font-weight:600; font-size:14px; }
+  .drop .lbl2{ font-size:12px; color:var(--grey-3); margin-top:4px;}
+  .filelist{ margin-top:12px; font-size:12px; color:var(--grey-3); display:flex; flex-wrap:wrap; gap:6px;}
+  .filelist .chip{ background:var(--grey-1); border-radius:4px; padding:4px 10px; }
+
+  .controls{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:16px;}
+  /* Inline tabs (switching the report's granularity within the page) — muted track,
+     selected view is a raised white chip, per Mise's inline-tab treatment. */
+  .gtabs{ display:inline-flex; gap:3px; margin-bottom:12px; background:var(--grey-1); border-radius:8px; padding:4px; }
+  .gtab{
+    font-family:'Inter',sans-serif; font-weight:600; font-size:12px; cursor:pointer;
+    border-radius:6px; padding:7px 14px; border:none; background:transparent; color:var(--grey-3);
+    transition: background .15s, color .15s;
+  }
+  .gtab:hover{ color:var(--navy); background:rgba(255,255,255,0.6); }
+  .gtab.active{ background:#fff; color:var(--navy); box-shadow:0 1px 2px rgba(0,7,67,.08); }
+  /* Navigation tabs (top-level Live / Reports sections) — selected is a solid primary fill. */
+  .maintabs{ display:flex; gap:6px; margin-bottom:18px; }
+  .maintab{
+    font-family:'Inter',sans-serif; font-weight:700; font-size:13px; cursor:pointer;
+    border:none; background:none; color:var(--grey-3); padding:8px 16px;
+    border-radius:6px; transition: background .15s, color .15s;
+  }
+  .maintab:hover{ background:var(--lightblue); color:var(--navy); }
+  .maintab.active{ background:var(--navy); color:var(--white); }
+  .maintab.active:hover{ background:var(--navy-hover); color:var(--white); }
+  select, input[type=number]{
+    font-family:'Inter',sans-serif; font-weight:600; font-size:13px; color:var(--navy);
+    border:1px solid var(--grey-2); border-radius:6px; padding:8px 10px; background:#fff;
+  }
+  .btn{
+    font-family:'Inter',sans-serif; font-weight:600; font-size:13px; cursor:pointer;
+    border-radius:6px; padding:8px 14px; border:1px solid var(--navy); background:var(--navy); color:var(--white);
+    transition: background .15s, color .15s;
+  }
+  .btn:hover{ background:var(--navy-hover); border-color:var(--navy-hover); }
+  .btn.ghost{ background:transparent; color:var(--navy); border:1px solid var(--grey-2);}
+  .btn.ghost:hover{ background:var(--lightblue); border-color:var(--navy); color:var(--navy);}
+  .btn.small{ padding:5px 10px; font-size:12px;}
+
+  .flags{ display:flex; flex-direction:column; gap:8px; }
+  .flag{ display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:6px; font-size:13px; }
+  .flag.red{ background:#FDEDF0; border:1px solid var(--red);}
+  .flag.amber{ background:#FFF8E8; border:1px solid var(--yellow);}
+  .flag .dot{ width:9px; height:9px; border-radius:50%; flex:0 0 auto;}
+  .flag.red .dot{ background:var(--red);}
+  .flag.amber .dot{ background:var(--yellow);}
+  .flag b{ font-weight:600; }
+  .flag .reason{ color:var(--grey-3); }
+  .empty{ color:var(--grey-3); font-size:13px; padding:6px 0;}
+
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th{ text-align:left; padding:8px 10px; color:var(--grey-3); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.02em; cursor:pointer; white-space:nowrap;}
+  th:hover{ color:var(--navy); }
+  td{ padding:9px 10px; border-top:1px solid var(--grey-1); white-space:nowrap; }
+  tr.agent-row{ cursor:pointer; }
+  tr.agent-row:hover{ background:var(--white); }
+  .rag{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px; vertical-align:middle;}
+  .rag.red{ background:var(--red);} .rag.amber{ background:var(--yellow);} .rag.green{ background:var(--green);} .rag.grey{ background:var(--grey-2);}
+  .name{ font-weight:600; }
+  .trend{ font-size:12px; color:var(--grey-3);}
+  .trend.up{ color:var(--green);} .trend.down{ color:var(--red);}
+  .queues{ font-size:11px; color:var(--grey-3);}
+
+  .detail{ display:none; background:var(--lightblue); }
+  .detail.open{ display:table-row; }
+  .detail td{ padding:14px 16px; border-top:none;}
+  .detailgrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:10px;}
+  .mini{ background:#fff; border-radius:6px; padding:8px 10px;}
+  .mini .l{ font-size:10px; text-transform:uppercase; color:var(--grey-3); letter-spacing:.03em;}
+  .mini .v{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:16px; margin-top:2px; color:var(--navy);}
+  .histrow{ font-size:12px;}
+
+  .thresholds{ display:none; gap:14px; flex-wrap:wrap; padding-top:12px; border-top:1px solid var(--grey-1); margin-top:12px;}
+  .thresholds.open{ display:flex; }
+  .tfield{ display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--grey-3); }
+  .tfield input{ width:80px; }
+
+  .legend{ display:flex; gap:14px; font-size:12px; color:var(--grey-3); align-items:center; flex-wrap:wrap;}
+  .legend span{ display:flex; align-items:center; gap:5px;}
+
+  .livechips{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .livechip{ background:var(--grey-1); border-radius:4px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid transparent;}
+  .livechip.active{ background:var(--navy); color:var(--white); }
+  .livechip .avail{ font-weight:500; opacity:0.6; font-size:11px; margin-left:3px; }
+  .filter-row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+  .search-input{ font-family:'Inter',sans-serif; font-weight:500; font-size:13px; color:var(--navy); border:1px solid var(--grey-2); border-radius:6px; padding:8px 10px; background:#fff; min-width:160px; }
+  .search-input::placeholder{ color:var(--grey-3); }
+  .btn.nav{ padding:7px 10px; font-size:13px; line-height:1; }
+  .copy-feedback{ font-size:12px; color:var(--green); margin-left:4px; opacity:0; transition:opacity .3s; }
+  .copy-feedback.show{ opacity:1; }
+  .livelist{ display:flex; flex-direction:column; gap:2px; max-height:340px; overflow-y:auto; }
+  .liverow{ display:flex; align-items:center; gap:10px; padding:7px 4px; font-size:13px; border-bottom:1px solid var(--grey-1); }
+  .liverow .dot{ width:8px; height:8px; border-radius:50%; flex:0 0 auto;}
+  .liverow .dot.in{ background:var(--green);} .liverow .dot.out{ background:var(--red);}
+  .liverow .dot.wrapup{ background:var(--yellow);}
+  .liverow .dot.wrapup.flagged{ background:var(--red);}
+  .liverow .off.flagged{ background:#FDEDF0; color:var(--red);}
+  .liverow .time{ color:var(--grey-3); width:48px; flex:0 0 auto;}
+  .liverow .who{ font-weight:600; width:110px; flex:0 0 auto;}
+  .liverow .q{ color:var(--grey-3); }
+  .liverow .off{ color:var(--yellow-text); font-weight:600; margin-left:auto; background:#FFF8E8; padding:2px 8px; border-radius:4px; font-size:11px;}
+  .livestatus{ font-size:12px; color:var(--grey-3); margin-bottom:10px; display:flex; align-items:center; gap:6px;}
+  .livestatus .pulse{ width:7px; height:7px; border-radius:50%; background:var(--grey-2);}
+  .livestatus.connected .pulse{ background:var(--green); }
+  .live-age{ color:var(--grey-3); }
+  .live-age.stale{ color:var(--red); font-weight:600; }
+
+  .wallboard{ display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr)); gap:10px; margin-bottom:16px; }
+  .wb-card{ background:var(--grey-1); border-radius:8px; padding:14px 16px 12px; text-align:center; }
+  .wb-card .qname{ font-size:10px; font-weight:600; color:var(--grey-3); text-transform:uppercase; letter-spacing:.04em; margin-bottom:10px; line-height:1.3; }
+  .wb-agents{ display:flex; align-items:baseline; justify-content:center; gap:4px; line-height:1; }
+  .wb-ready{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:36px; color:var(--green); }
+  .wb-ready.zero{ color:var(--grey-2); }
+  .wb-sep{ font-family:'Fira Sans',sans-serif; font-weight:700; font-size:24px; color:var(--grey-2); }
+  .wb-total{ font-family:'Fira Sans',sans-serif; font-weight:700; font-size:24px; color:var(--navy); }
+  .wb-sublabel{ font-size:10px; color:var(--grey-3); text-transform:uppercase; letter-spacing:.03em; margin-top:3px; }
+  .wb-divider{ height:1px; background:var(--grey-2); margin:10px 0; }
+  .wb-wait{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:20px; color:var(--navy); }
+  .wb-wait.slow{ color:var(--yellow-text); }
+  .wb-offline-label{ font-size:9px; color:var(--grey-3); text-transform:uppercase; letter-spacing:.04em; margin:6px 0 3px; }
+  .wb-offline-name{ font-size:11px; color:var(--grey-3); text-align:left; padding:1px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  .toast{
+    position:fixed; bottom:20px; right:20px; background:var(--navy); color:var(--white);
+    padding:10px 16px; border-radius:6px; font-size:13px; font-weight:600; opacity:0; transition:opacity .3s; pointer-events:none;
+  }
+  .toast.show{ opacity:1; }
+  .btn.notif-on{ background:var(--green); color:#fff; border-color:var(--green); }
+  .btn.notif-on:hover{ background:#006b39; border-color:#006b39; }
+
+  /* ===== TV / WALLBOARD VIEW ===== */
+  #tv-view{
+    display:none; position:fixed; inset:0; z-index:9999;
+    background:var(--navy); color:var(--white);
+    font-family:'Inter',system-ui,sans-serif; font-weight:500;
+    flex-direction:column; overflow:hidden;
+  }
+  #tv-view.active{ display:flex; }
+
+  .tv-bar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 28px; border-bottom:1px solid rgba(255,255,255,0.08); flex-shrink:0;
+  }
+  .tv-bar-left{ display:flex; align-items:baseline; gap:14px; }
+  .tv-brand-tv{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:22px; }
+  .tv-title{ font-size:13px; opacity:0.4; }
+  .tv-bar-right{ display:flex; align-items:center; gap:18px; }
+  .tv-live-pill{ display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; }
+  .tv-live-pill .pdot{ width:8px; height:8px; border-radius:50%; background:var(--grey-2); }
+  .tv-live-pill.connected .pdot{ background:var(--green); }
+  .tv-clock{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:22px; letter-spacing:.02em; }
+  .tv-exit{ font-size:11px; color:rgba(255,255,255,0.3); background:none; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:4px 10px; cursor:pointer; font-family:'Inter',sans-serif; }
+  .tv-exit:hover{ color:var(--white); border-color:rgba(255,255,255,0.5); }
+
+  .tv-queues{
+    display:flex; gap:10px; padding:14px 28px; flex-shrink:0;
+    border-bottom:1px solid rgba(255,255,255,0.08);
+  }
+  .tv-qcard{
+    flex:1; background:rgba(255,255,255,0.06); border-radius:8px;
+    padding:14px 16px 12px; text-align:center;
+  }
+  .tv-qcard .qname-tv{ font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; opacity:0.45; margin-bottom:8px; line-height:1.3; }
+  .tv-agents{ display:flex; align-items:baseline; justify-content:center; gap:4px; line-height:1; }
+  .tv-ready{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:52px; color:var(--green); }
+  .tv-ready.zero{ color:rgba(255,255,255,0.18); }
+  .tv-slash{ font-family:'Fira Sans',sans-serif; font-weight:700; font-size:30px; opacity:0.25; }
+  .tv-total-num{ font-family:'Fira Sans',sans-serif; font-weight:700; font-size:30px; opacity:0.6; }
+  .tv-sub{ font-size:10px; text-transform:uppercase; letter-spacing:.04em; opacity:0.35; margin-top:4px; }
+  .tv-qdivider{ height:1px; background:rgba(255,255,255,0.1); margin:10px 0; }
+  .tv-wait{ font-family:'Fira Sans',sans-serif; font-weight:700; font-size:22px; }
+  .tv-wait.slow{ color:var(--yellow); }
+
+  .tv-body{
+    display:grid; grid-template-columns:1fr 1fr; flex:1; overflow:hidden;
+  }
+  .tv-col{ padding:20px 28px; overflow:hidden; }
+  .tv-col + .tv-col{ border-left:1px solid rgba(255,255,255,0.08); }
+  .tv-section-label{
+    font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.08em;
+    opacity:0.35; margin-bottom:14px; display:flex; align-items:center; gap:8px;
+  }
+  .tv-period-tag{ opacity:0.6; font-weight:500; letter-spacing:.02em; text-transform:none; }
+
+  .tv-agent-row{
+    display:flex; align-items:center; gap:12px;
+    padding:9px 0; font-size:18px; font-weight:500;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+  }
+  .tv-agent-row .adot{ width:9px; height:9px; border-radius:50%; background:var(--green); flex-shrink:0; }
+
+  .tv-team-rate{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:64px; line-height:1; }
+  .tv-team-label{ font-size:11px; opacity:0.4; text-transform:uppercase; letter-spacing:.04em; margin-top:4px; margin-bottom:20px; }
+  .tv-rank-row{
+    display:flex; align-items:center; gap:12px; padding:7px 0; font-size:17px;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+  }
+  .tv-rank-num{ font-size:11px; opacity:0.3; width:18px; text-align:right; flex-shrink:0; }
+  .tv-rank-name{ flex:1; font-weight:500; }
+  .tv-rank-rate{ font-family:'Fira Sans',sans-serif; font-weight:700; font-size:19px; }
+  .tv-flags-label{ margin-top:16px; margin-bottom:8px; font-size:10px; text-transform:uppercase; letter-spacing:.05em; opacity:0.35; }
+  .tv-flag-row{ display:flex; align-items:center; gap:8px; padding:6px 0; font-size:15px; }
+  .tv-flag-row .fdot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .tv-no-data{ opacity:0.25; font-size:15px; padding-top:10px; }
+  .tv-no-live-queues{ opacity:0.25; font-size:14px; }
+  .tv-col-divider{ height:1px; background:rgba(255,255,255,0.08); margin:16px 0; }
+  .tv-chart-label{ font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; opacity:0.35; margin-bottom:10px; }
+  .tv-sparkline-val{ display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
+  .tv-sparkline-big{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:32px; line-height:1; }
+  .tv-sparkline-unit{ font-size:11px; opacity:0.4; }
+  .tv-weather{ display:flex; align-items:center; gap:8px; padding:5px 12px; background:rgba(255,255,255,0.06); border-radius:8px; }
+  .tv-weather .wemoji{ font-size:18px; line-height:1; }
+  .tv-weather .wtemp{ font-family:'Fira Sans',sans-serif; font-size:18px; font-weight:700; }
+  .tv-weather .wcity{ font-size:11px; opacity:0.4; }
+  .tv-fs-btn{ font-size:15px; line-height:1; color:rgba(255,255,255,0.35); background:none; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:3px 9px; cursor:pointer; font-family:'Inter',sans-serif; }
+  .tv-fs-btn:hover{ color:var(--white); border-color:rgba(255,255,255,0.5); }
+  .tv-activity-row{ display:flex; gap:24px; margin-bottom:2px; }
+  .tv-stat-item{ display:flex; flex-direction:column; }
+  .tv-stat-num{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:26px; line-height:1; }
+  .tv-stat-lbl{ font-size:10px; opacity:0.35; text-transform:uppercase; letter-spacing:.04em; margin-top:3px; }
+</style>
+</head>
+<body>
+
+<!-- TV / Wallboard View — shown when ?tv is in the URL -->
+<div id="tv-view">
+  <div class="tv-bar">
+    <div class="tv-bar-left">
+      <span class="tv-brand-tv">munu.</span>
+      <span class="tv-title">Unifon · Live</span>
+    </div>
+    <div class="tv-bar-right">
+      <div class="tv-weather" id="tvWeather" style="display:none;"></div>
+      <div class="tv-live-pill" id="tvLivePill"><span class="pdot"></span><span id="tvLiveText">Connecting...</span></div>
+      <div class="tv-clock" id="tvClock">--:--:--</div>
+      <button class="tv-fs-btn" id="tvFsBtn" onclick="toggleFullscreen()" title="Fullscreen">&#x26F6;</button>
+      <button class="tv-exit" onclick="exitTV()">&#x2715; Exit TV</button>
+    </div>
+  </div>
+  <div class="tv-queues" id="tvQueues">
+    <div class="tv-no-live-queues">Waiting for local capture server...</div>
+  </div>
+  <div class="tv-body">
+    <div class="tv-col">
+      <div class="tv-section-label">Online now</div>
+      <div id="tvOnlineList"></div>
+    </div>
+    <div class="tv-col">
+      <div id="tvStatsContent">
+        <div class="tv-section-label">Last week</div>
+        <div class="tv-no-data">Upload a Unifon report to see performance data</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="top">
+    <div>
+      <div class="brand"><span>munu.</span></div>
+      <div class="sub">Unifon agent performance — upload exports, track trends, spot underperformance</div>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn ghost small" onclick="openTV()">TV view</button>
+      <button class="btn ghost small" id="resetBtn">Clear all data</button>
+    </div>
+  </div>
+
+  <div class="maintabs" id="mainTabs">
+    <button class="maintab active" data-tab="live">Live</button>
+    <button class="maintab" data-tab="reports">Reports</button>
+  </div>
+
+  <div class="tabpanel" id="panel-live">
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+        <h2 style="margin-bottom:0;">Live queue activity — today</h2>
+        <div style="display:flex; gap:8px;">
+          <button class="btn ghost small" id="sourceBtn">Capture source</button>
+          <button class="btn ghost small" id="notifBtn" style="display:none;" onclick="handleNotifBtn()">Enable notifications</button>
+        </div>
+      </div>
+      <div class="livestatus" id="liveStatus"><span class="pulse"></span><span id="liveStatusText">Checking for local capture...</span><span id="liveAge" class="live-age"></span></div>
+      <div id="sourcePanel" style="display:none; background:var(--grey-1); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+        <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+          <div class="tfield" style="flex:1; min-width:240px;">
+            Capture server address
+            <input type="text" id="sourceUrlInput" class="search-input" style="width:100%;" placeholder="https://your-tunnel.trycloudflare.com">
+          </div>
+          <button class="btn small" id="sourceSaveBtn">Save &amp; reconnect</button>
+          <button class="btn ghost small" id="sourceResetBtn">Reset to localhost</button>
+        </div>
+        <div style="font-size:11px; color:var(--grey-3); margin-top:8px;">Point this at wherever <code>capture-server.js</code> is reachable — <code>http://localhost:8787</code> if this dashboard is open on the same PC as the capture server, or its public tunnel URL (e.g. a Cloudflare Tunnel address) if you're viewing this from elsewhere, like a GitHub-hosted copy of this page.</div>
+      </div>
+      <div class="wallboard" id="wallboard" style="display:none;"></div>
+      <div id="wrapupFlags"></div>
+      <div class="livechips" id="liveChips"></div>
+      <div class="livelist" id="liveList"></div>
+    </div>
+  </div>
+
+  <div class="tabpanel" id="panel-reports" style="display:none;">
+
+    <div class="card">
+      <div class="drop" id="drop">
+        <input type="file" id="fileInput" multiple accept=".xlsx">
+        <div class="lbl">Drop Unifon exports here, or click to choose files</div>
+        <div class="lbl2">Accepts "agents-report", "main-number-report" and "calls-report" .xlsx files — day, week, month or custom range</div>
+      </div>
+      <div class="filelist" id="fileList"></div>
+      <div id="storageNote" style="font-size:11px; color:var(--grey-3); margin-top:8px;"></div>
+    </div>
+
+    <div id="app" style="display:none;">
+
+      <div class="gtabs" id="granularityTabs"></div>
+
+      <div class="controls">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <label style="font-size:12px; color:var(--grey-3);">Period</label>
+          <button class="btn ghost nav" id="periodPrevBtn" title="Previous period">&#x2190;</button>
+          <select id="periodSelect"></select>
+          <button class="btn ghost nav" id="periodNextBtn" title="Next period">&#x2192;</button>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn ghost small" id="toggleThresholds">Adjust flagging thresholds</button>
+          <button class="btn ghost small" id="copyTableBtn" onclick="copyTable()">Copy table</button>
+          <span class="copy-feedback" id="copyFeedback">Copied!</span>
+          <button class="btn small" onclick="generateReport()">Generate report</button>
+        </div>
+      </div>
+      <div class="filter-row">
+        <select id="queueFilter"><option value="All">All queues</option></select>
+        <input type="text" class="search-input" id="agentSearch" placeholder="Search agents…">
+      </div>
+
+      <div class="card" id="thresholdsCard" style="display:none;">
+        <div class="thresholds open">
+          <div class="tfield">Min. calls to be flagged<input type="number" id="minVol" value="5" min="1"></div>
+          <div class="tfield">Amber: points below team avg answer rate<input type="number" id="amberGap" value="10" min="1"></div>
+          <div class="tfield">Red: points below team avg answer rate<input type="number" id="redGap" value="20" min="1"></div>
+          <div class="tfield">Red regardless: answer rate below (%)<input type="number" id="absFloor" value="75" min="0" max="100"></div>
+        </div>
+      </div>
+
+      <div class="card" id="teamStatsCard" style="display:none;">
+        <h2>Team overview — from main-number report</h2>
+        <div id="teamStatsGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;"></div>
+      </div>
+
+      <div class="card">
+        <h2>Needs a conversation</h2>
+        <div class="flags" id="flags"></div>
+      </div>
+
+      <div class="card">
+        <h2>Agent performance — <span id="periodTitle"></span></h2>
+        <div class="legend" style="margin-bottom:10px;">
+          <span><span class="rag red"></span>Red — well below team average</span>
+          <span><span class="rag amber"></span>Amber — below average / trending down</span>
+          <span><span class="rag green"></span>Green — on track</span>
+          <span><span class="rag grey"></span>Grey — too little volume to judge</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th data-sort="name">Agent</th>
+              <th data-sort="answered">Answered</th>
+              <th data-sort="answerRate">Answer rate</th>
+              <th data-sort="timeoutRate">Timeout rate</th>
+              <th data-sort="avgTalk">Avg handle time</th>
+              <th data-sort="avgWait">Avg wait (answered)</th>
+              <th data-sort="logoffs">Log-offs</th>
+              <th data-sort="trend">Trend</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+
+    </div>
+
+    <div class="card" id="callLogCard" style="display:none;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
+        <h2 style="margin-bottom:0;">Call log — precise per-agent stats <span id="callLogPeriodTitle" style="font-weight:400; color:var(--grey-3);"></span></h2>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn ghost nav" id="callPeriodPrevBtn" title="Previous period">&#x2190;</button>
+          <select id="callPeriodSelect"></select>
+          <button class="btn ghost nav" id="callPeriodNextBtn" title="Next period">&#x2192;</button>
+        </div>
+      </div>
+      <div style="font-size:12px; color:var(--grey-3); margin-bottom:10px;">Built from raw "calls-report" exports — exact per-call counts, not Unifon's aggregate buckets. Missed calls aren't attributed to an agent (Unifon doesn't record who a missed call rang to), so this table only covers calls that were actually answered.</div>
+      <table>
+        <thead>
+          <tr>
+            <th data-sort-call="name">Agent</th>
+            <th data-sort-call="answered">Answered</th>
+            <th data-sort-call="avgTalk">Avg talk time</th>
+            <th data-sort-call="maxTalk">Longest call</th>
+            <th data-sort-call="avgWait">Avg wait</th>
+            <th data-sort-call="maxWait">Longest wait</th>
+          </tr>
+        </thead>
+        <tbody id="callTbody"></tbody>
+      </table>
+    </div>
+
+    <div class="card" id="noData">
+      <div class="empty">No reports loaded yet. Upload one or more Unifon exports above to get started.</div>
+    </div>
+
+  </div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- helpers ---------- */
+function parseDur(s){
+  if(s===null || s===undefined) return 0;
+  s = String(s).trim();
+  if(s==='' || s==='-') return 0;
+  let total=0;
+  const h=s.match(/(\d+)\s*h/); if(h) total+=parseInt(h[1])*3600;
+  const m=s.match(/(\d+)\s*m/); if(m) total+=parseInt(m[1])*60;
+  const sec=s.match(/(\d+)\s*s/); if(sec) total+=parseInt(sec[1]);
+  return total;
+}
+function fmtDur(secs){
+  secs = Math.round(secs||0);
+  const h=Math.floor(secs/3600), m=Math.floor((secs%3600)/60), s=secs%60;
+  if(h>0) return h+'h '+m+'m';
+  if(m>0) return m+'m '+s+'s';
+  return s+'s';
+}
+function toNum(v){
+  if(v===null || v===undefined) return 0;
+  if(typeof v==='number') return v;
+  const s=String(v).trim();
+  if(s==='' || s==='-') return 0;
+  const n=parseFloat(s.replace(',','.'));
+  return isNaN(n)?0:n;
+}
+function cleanLabel(label){
+  label = String(label).trim();
+  const len=label.length;
+  if(len%2===0){
+    const a=label.slice(0,len/2), b=label.slice(len/2);
+    if(a===b) return a;
+  }
+  return label;
+}
+function classifyAggLabel(label){
+  if(/^Hour/.test(label)) return 'Hour';
+  if(/^Dag/.test(label)) return 'Day';
+  if(/^Month/.test(label)) return 'Month';
+  return 'Range';
+}
+function extractRangeGuess(label, yearHint){
+  const full = [...label.matchAll(/(\d{2})\.(\d{2})\.(\d{4})/g)];
+  if(full.length>=2){
+    const s=full[0], e=full[full.length-1];
+    return {
+      start: new Date(parseInt(s[3]), parseInt(s[2])-1, parseInt(s[1])).getTime(),
+      end: new Date(parseInt(e[3]), parseInt(e[2])-1, parseInt(e[1])).getTime()
+    };
+  }
+  if(full.length===1){
+    const t = new Date(parseInt(full[0][3]), parseInt(full[0][2])-1, parseInt(full[0][1])).getTime();
+    return {start:t, end:t};
+  }
+  const short = [...label.matchAll(/(\d{2})\.(\d{2})(?!\.\d{4})/g)];
+  if(short.length>=2){
+    const s=short[0], e=short[short.length-1];
+    return {
+      start: new Date(yearHint, parseInt(s[2])-1, parseInt(s[1])).getTime(),
+      end: new Date(yearHint, parseInt(e[2])-1, parseInt(e[1])).getTime()
+    };
+  }
+  if(short.length===1){
+    const t = new Date(yearHint, parseInt(short[0][2])-1, parseInt(short[0][1])).getTime();
+    return {start:t, end:t};
+  }
+  const now = Date.now();
+  return {start:now, end:now};
+}
+function spanDaysOf(range){
+  return Math.max(1, Math.round((range.end - range.start) / 86400000) + 1);
+}
+function granularityOf(periodType, spanDays){
+  // Classify by the section's actual date span, not by Unifon's section label.
+  // A custom agent-report range that crosses a month boundary gets split by
+  // Unifon into multiple "Month..." sub-sections that only cover a few days
+  // each (e.g. "Month29.06 - 30.06") — those must bucket as Weekly/Daily, not
+  // Monthly, or they'll be compared against real full months.
+  if(spanDays<=1) return 'Daily';
+  if(spanDays<=9) return 'Weekly';
+  return 'Monthly';
+}
+
+/* ---------- parse a workbook ---------- */
+function parseWorkbook(name, wb){
+  const sheetName = wb.SheetNames.includes('data') ? 'data' : wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:false});
+  if(rows.length<3) return {agentRecords:[], teamRecords:[]};
+
+  const headerRow = rows[1].map(x => x===null? '' : String(x));
+  const isAgentReport = headerRow.some(h => h.trim()==='Navn');
+
+  let yearHint = new Date().getFullYear();
+  for(const r of rows){
+    if(r && r[0]){
+      const m = String(r[0]).match(/\.(\d{4})/);
+      if(m){ yearHint = parseInt(m[1]); break; }
+    }
+  }
+
+  const agentRecords = [];
+  const teamRecords = [];
+
+  if(isAgentReport){
+    let periodLabel=null, periodType=null, queue=null, topRangeLabel=null;
+    for(let i=2;i<rows.length;i++){
+      const r = rows[i];
+      if(!r || r.every(c=>c===null)) continue;
+      const label = r[0]!==null? String(r[0]).trim() : null;
+      const navn = r[1]!==null? String(r[1]).trim() : null;
+
+      if(navn){
+        if(label) queue = label;
+        if(periodType==='Range' || periodType==='Month' || periodType==='Day'){
+          const range = extractRangeGuess(periodLabel, yearHint);
+          const spanDays = spanDaysOf(range);
+          agentRecords.push({
+            periodLabel, periodType, dateGuess: range.start, spanDays,
+            granularity: granularityOf(periodType, spanDays),
+            queue: queue||'Unknown', name: navn,
+            answered: toNum(r[3]),
+            avgTalk: parseDur(r[5]),
+            totalTalk: parseDur(r[7]),
+            avgWaitAnswered: parseDur(r[8]),
+            avgWaitMissed: parseDur(r[10]),
+            picked: toNum(r[12]),
+            timeouts: toNum(r[13]),
+            transferred: toNum(r[14]),
+            available: parseDur(r[15]),
+            sourceFile: name
+          });
+        }
+      } else if(label){
+        const type = classifyAggLabel(label);
+        if(type==='Range'){ periodLabel=cleanLabel(label); periodType='Range'; queue=null; if(!topRangeLabel) topRangeLabel=periodLabel; }
+        else if(type==='Month'){ periodLabel=label.replace(/^Month/,'').trim(); periodType='Month'; queue=null; }
+        else if(type==='Day'){ periodLabel=label.replace(/^Dag/,'').trim(); periodType='Day'; queue=null; }
+        else if(type==='Hour'){ periodType='Hour'; }
+      }
+    }
+
+    // A custom date range that crosses a month boundary gets split by Unifon into
+    // several "Month..." sub-sections (e.g. "29.06 - 30.06" + "01.07 - 05.07"), each
+    // only covering part of the range — so no single period ever shows the agent's
+    // total for the whole requested range. Synthesize that merged total here.
+    // Skip entirely if the file already has real per-agent rows directly under the
+    // range header (Unifon sometimes includes those) — trust those totals as-is
+    // rather than re-deriving (and double-counting) them from the sub-chunks.
+    const hasRealRangeRows = agentRecords.some(r => r.periodType === 'Range');
+    const subPeriodRows = agentRecords.filter(r => r.periodType === 'Month' || r.periodType === 'Day');
+    const subKeys = new Set(subPeriodRows.map(r => r.periodType+'||'+r.periodLabel));
+    if(topRangeLabel && !hasRealRangeRows && subKeys.size > 1){
+      const range = extractRangeGuess(topRangeLabel, yearHint);
+      const spanDays = spanDaysOf(range);
+      const granularity = granularityOf('Range', spanDays);
+      for(const r of subPeriodRows){
+        agentRecords.push({...r, periodLabel: topRangeLabel, periodType: 'Range', dateGuess: range.start, spanDays, granularity});
+      }
+    }
+  } else {
+    // main-number-report: queue-agnostic totals for Range and Month rows only
+    for(let i=2;i<rows.length;i++){
+      const r = rows[i];
+      if(!r || r.every(c=>c===null)) continue;
+      const label = r[0]!==null? String(r[0]).trim() : null;
+      if(!label) continue;
+      const type = classifyAggLabel(label);
+      if(type==='Range' || type==='Month'){
+        const cleaned = type==='Range' ? cleanLabel(label) : label.replace(/^Month/,'').trim();
+        const range = extractRangeGuess(cleaned, yearHint);
+        teamRecords.push({
+          periodLabel: cleaned, periodType: type, dateGuess: range.start,
+          answered: toNum(r[1]), missed: toNum(r[2]),
+          callbackRequests: toNum(r[4]),
+          totalCalls: toNum(r[5]),
+          avgWaitOverall: parseDur(r[6]),
+          overKpi: toNum(r[8]),
+          totalTalk: parseDur(r[11]),
+          avgWaitMissed: parseDur(r[14]),
+          sourceFile: name
+        });
+      }
+    }
+  }
+  return {agentRecords, teamRecords};
+}
+
+/* ---------- aggregation across queues within a file ---------- */
+function aggregateAgentRecords(raw){
+  const map = new Map();
+  for(const r of raw){
+    const key = r.periodType+'||'+r.periodLabel+'||'+r.name;
+    if(!map.has(key)){
+      map.set(key, {
+        key, periodLabel:r.periodLabel, periodType:r.periodType, dateGuess:r.dateGuess,
+        spanDays:r.spanDays, granularity:r.granularity,
+        name:r.name, queues:new Set(), answered:0, timeouts:0, transferred:0, picked:0,
+        totalTalk:0, available:0, waitAnsweredNum:0, waitAnsweredDen:0, waitMissedNum:0, waitMissedDen:0,
+        sourceFile:r.sourceFile
+      });
+    }
+    const a = map.get(key);
+    a.queues.add(r.queue);
+    a.answered += r.answered;
+    a.timeouts += r.timeouts;
+    a.transferred += r.transferred;
+    a.picked += r.picked;
+    a.totalTalk += r.totalTalk;
+    a.available += r.available;
+    a.waitAnsweredNum += r.avgWaitAnswered * r.answered;
+    a.waitAnsweredDen += r.answered;
+    a.waitMissedNum += r.avgWaitMissed * r.timeouts;
+    a.waitMissedDen += r.timeouts;
+    a.sourceFile = r.sourceFile;
+  }
+  return Array.from(map.values()).map(a=>{
+    const attempts = a.answered + a.timeouts;
+    return {
+      ...a,
+      queues: Array.from(a.queues).join(', '),
+      answerRate: attempts>0 ? (a.answered/attempts*100) : null,
+      timeoutRate: attempts>0 ? (a.timeouts/attempts*100) : null,
+      avgTalk: a.answered>0 ? a.totalTalk/a.answered : 0,
+      avgWaitAnswered: a.waitAnsweredDen>0 ? a.waitAnsweredNum/a.waitAnsweredDen : 0,
+      avgWaitMissed: a.waitMissedDen>0 ? a.waitMissedNum/a.waitMissedDen : 0,
+      attempts
+    };
+  });
+}
+
+/* ---------- aggregation by queue ---------- */
+function aggregateQueueRecords(raw){
+  const map = new Map();
+  for(const r of raw){
+    const key = r.periodType+'||'+r.periodLabel+'||'+r.queue;
+    if(!map.has(key)){
+      map.set(key, {
+        key, periodLabel:r.periodLabel, periodType:r.periodType, dateGuess:r.dateGuess,
+        spanDays:r.spanDays, granularity:r.granularity, queue:r.queue,
+        answered:0, timeouts:0, totalTalk:0, waitAnsweredNum:0, waitAnsweredDen:0
+      });
+    }
+    const q = map.get(key);
+    q.answered  += r.answered;
+    q.timeouts  += r.timeouts;
+    q.totalTalk += r.totalTalk;
+    q.waitAnsweredNum += r.avgWaitAnswered * r.answered;
+    q.waitAnsweredDen += r.answered;
+  }
+  return Array.from(map.values()).map(q=>{
+    const attempts = q.answered + q.timeouts;
+    return {
+      ...q, attempts,
+      answerRate: attempts>0 ? q.answered/attempts*100 : null,
+      avgTalk: q.answered>0 ? q.totalTalk/q.answered : 0,
+      avgWait: q.waitAnsweredDen>0 ? q.waitAnsweredNum/q.waitAnsweredDen : 0
+    };
+  });
+}
+
+/* ---------- parse a raw "calls-report" call log ----------
+   One row per call: Dato og tid | Status | Innringer | Ventetid | Samtaletid | Kø | Agent.
+   We deliberately drop the caller number (Innringer) — it's not needed for agent stats
+   and there's no reason to persist customer phone numbers in browser storage.
+*/
+function isCallLogSheet(rows){
+  return rows.length>0 && rows[0] && String(rows[0][0]||'').trim()==='Dato og tid';
+}
+function parseCallTimestamp(s){
+  const m = String(s).trim().match(/(\d{2})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+  if(!m) return null;
+  const [, d, mo, y, h, mi, se] = m;
+  return new Date(2000+parseInt(y), parseInt(mo)-1, parseInt(d), parseInt(h), parseInt(mi), parseInt(se));
+}
+function fmtDateDMY(ts){
+  const d = new Date(ts);
+  return String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+d.getFullYear();
+}
+function parseCallLog(name, rows){
+  const calls = [];
+  for(let i=1;i<rows.length;i++){
+    const r = rows[i];
+    if(!r || r[0]==null) continue;
+    const dt = parseCallTimestamp(r[0]);
+    if(!dt) continue;
+    calls.push({
+      ts: dt.getTime(),
+      dateKey: dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'),
+      status: r[1]!=null ? String(r[1]).trim() : '',
+      wait: parseDur(r[3]),
+      talk: parseDur(r[4]),
+      queue: r[5]!=null ? String(r[5]).trim() : 'Unknown',
+      agent: r[6]!=null ? String(r[6]).trim() : null,
+      sourceFile: name
+    });
+  }
+  return calls;
+}
+function aggregateCallRecords(calls){
+  // Missed calls carry no Agent (Unifon doesn't record who a missed call rang to),
+  // so only answered calls can be attributed to a specific agent.
+  const answered = calls.filter(c => c.status==='Besvart' && c.agent);
+
+  const dayMap = new Map();
+  for(const c of answered){
+    const key = c.dateKey+'||'+c.agent;
+    if(!dayMap.has(key)) dayMap.set(key, {dateKey:c.dateKey, name:c.agent, queues:new Set(), answered:0, totalTalk:0, maxTalk:0, totalWait:0, maxWait:0, sourceFile:c.sourceFile});
+    const a = dayMap.get(key);
+    a.queues.add(c.queue); a.answered+=1; a.totalTalk+=c.talk; a.maxTalk=Math.max(a.maxTalk,c.talk);
+    a.totalWait+=c.wait; a.maxWait=Math.max(a.maxWait,c.wait); a.sourceFile=c.sourceFile;
+  }
+  const dayRecords = Array.from(dayMap.values()).map(a=>{
+    const dt = new Date(a.dateKey+'T00:00:00');
+    return {
+      key: 'Day||'+a.dateKey+'||'+a.name,
+      periodType:'Day', periodLabel:a.dateKey, dateGuess: dt.getTime(), granularity:'Daily',
+      name:a.name, queues: Array.from(a.queues).join(', '),
+      answered:a.answered, avgTalk: a.totalTalk/a.answered, maxTalk:a.maxTalk, totalTalk:a.totalTalk,
+      avgWait: a.totalWait/a.answered, maxWait:a.maxWait,
+      sourceFile:a.sourceFile
+    };
+  });
+
+  if(!answered.length) return dayRecords;
+
+  // Whole-range roll-up per agent, spanning every call in this particular upload.
+  const allTs = calls.map(c=>c.ts);
+  const minTs = Math.min(...allTs), maxTs = Math.max(...allTs);
+  const spanDays = Math.max(1, Math.round((maxTs-minTs)/86400000)+1);
+  const rangeLabel = fmtDateDMY(minTs)+' - '+fmtDateDMY(maxTs);
+  const rangeMap = new Map();
+  for(const c of answered){
+    if(!rangeMap.has(c.agent)) rangeMap.set(c.agent, {queues:new Set(), answered:0, totalTalk:0, maxTalk:0, totalWait:0, maxWait:0});
+    const a = rangeMap.get(c.agent);
+    a.queues.add(c.queue); a.answered+=1; a.totalTalk+=c.talk; a.maxTalk=Math.max(a.maxTalk,c.talk);
+    a.totalWait+=c.wait; a.maxWait=Math.max(a.maxWait,c.wait);
+  }
+  const rangeRecords = Array.from(rangeMap.entries()).map(([name,a])=>({
+    key: 'Range||'+rangeLabel+'||'+name,
+    periodType:'Range', periodLabel:rangeLabel, dateGuess:minTs, granularity:granularityOf('Range', spanDays),
+    name, queues:Array.from(a.queues).join(', '),
+    answered:a.answered, avgTalk:a.totalTalk/a.answered, maxTalk:a.maxTalk, totalTalk:a.totalTalk,
+    avgWait:a.totalWait/a.answered, maxWait:a.maxWait,
+    sourceFile: answered[0].sourceFile
+  }));
+
+  return [...dayRecords, ...rangeRecords];
+}
+
+/* ---------- storage ----------
+   Works in two different environments:
+   - Inside a Claude.ai conversation: uses Claude's built-in artifact storage (window.storage)
+   - Opened directly as a local file (needed for the live localhost panel): falls back to
+     IndexedDB, which is a real browser database that persists on this computer between sessions.
+*/
+const hasClaudeStorage = (typeof window.storage !== 'undefined') && window.storage && typeof window.storage.get === 'function';
+
+const IDB_NAME = 'unifon-dashboard-db';
+const IDB_STORE = 'kv';
+function idbOpen(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore(IDB_STORE); };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function idbGet(key){
+  const db = await idbOpen();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = ()=> resolve(req.result===undefined? null : req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function idbSet(key, value){
+  const db = await idbOpen();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(value, key);
+    tx.oncomplete = ()=> resolve(true);
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+
+async function storageGet(key){
+  if(hasClaudeStorage){
+    try{ const r = await window.storage.get(key, false); return r ? r.value : null; }
+    catch(e){ return null; }
+  }
+  try{ return await idbGet(key); }
+  catch(e){ console.error('local storage read failed', e); return null; }
+}
+async function storageSet(key, value){
+  if(hasClaudeStorage){
+    try{ await window.storage.set(key, value, false); return; }
+    catch(e){ console.error('save failed', e); return; }
+  }
+  try{ await idbSet(key, value); }
+  catch(e){ console.error('local storage write failed', e); }
+}
+
+async function loadStore(){
+  const v = await storageGet('unifon-agent-records');
+  return v ? JSON.parse(v) : [];
+}
+async function saveStore(records){
+  await storageSet('unifon-agent-records', JSON.stringify(records));
+}
+async function loadFiles(){
+  const v = await storageGet('unifon-files');
+  return v ? JSON.parse(v) : [];
+}
+async function saveFiles(files){
+  await storageSet('unifon-files', JSON.stringify(files));
+}
+async function loadQueueStore(){
+  const v = await storageGet('unifon-queue-records');
+  return v ? JSON.parse(v) : [];
+}
+async function saveQueueStore(records){
+  await storageSet('unifon-queue-records', JSON.stringify(records));
+}
+async function loadTeamStore(){
+  const v = await storageGet('unifon-team-records');
+  return v ? JSON.parse(v) : [];
+}
+async function saveTeamStore(records){
+  await storageSet('unifon-team-records', JSON.stringify(records));
+}
+async function loadCallStore(){
+  const v = await storageGet('unifon-call-records');
+  return v ? JSON.parse(v) : [];
+}
+async function saveCallStore(records){
+  await storageSet('unifon-call-records', JSON.stringify(records));
+}
+
+/* ---------- state ---------- */
+let ALL_RECORDS = [];        // aggregated per-agent-per-period records, upserted by key
+let ALL_QUEUE_RECORDS = [];  // aggregated per-queue-per-period records
+let ALL_TEAM_RECORDS = [];   // team-level records from main-number-report, upserted by period key
+let ALL_CALL_RECORDS = [];   // per-agent-per-day (+ whole-range) records built from raw calls-report logs
+let INGESTED_FILES = [];
+let sortKey = localStorage.getItem('unifon-sort-key') || 'answerRate';
+let sortDir = parseInt(localStorage.getItem('unifon-sort-dir') || '1');
+let agentSearchVal = '';
+let queueFilterVal  = 'All';
+let openRow=null;
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2400);
+}
+
+async function ingestFile(file){
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array'});
+  const sheetName = wb.SheetNames.includes('data') ? 'data' : wb.SheetNames[0];
+  const probeRows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:false});
+
+  const loaded = [];
+
+  if(isCallLogSheet(probeRows)){
+    const calls = parseCallLog(file.name, probeRows);
+    const agg = aggregateCallRecords(calls);
+    const cmap = new Map(ALL_CALL_RECORDS.map(r=>[r.key,r]));
+    for(const a of agg) cmap.set(a.key, a);
+    ALL_CALL_RECORDS = Array.from(cmap.values());
+    await saveCallStore(ALL_CALL_RECORDS);
+    if(agg.length > 0) loaded.push(agg.length + ' agent-day call-log records');
+  } else {
+    const {agentRecords, teamRecords} = parseWorkbook(file.name, wb);
+
+    if(agentRecords.length > 0){
+      const agg = aggregateAgentRecords(agentRecords);
+      const map = new Map(ALL_RECORDS.map(r=>[r.key,r]));
+      for(const a of agg) map.set(a.key, a);
+      ALL_RECORDS = Array.from(map.values());
+      await saveStore(ALL_RECORDS);
+
+      const qagg = aggregateQueueRecords(agentRecords);
+      const qmap = new Map(ALL_QUEUE_RECORDS.map(r=>[r.key,r]));
+      for(const q of qagg) qmap.set(q.key, q);
+      ALL_QUEUE_RECORDS = Array.from(qmap.values());
+      await saveQueueStore(ALL_QUEUE_RECORDS);
+
+      loaded.push(agg.length + ' agent-period records');
+    }
+
+    if(teamRecords.length > 0){
+      const tmap = new Map(ALL_TEAM_RECORDS.map(r=>[r.periodType+'||'+r.periodLabel, r]));
+      for(const t of teamRecords) tmap.set(t.periodType+'||'+t.periodLabel, t);
+      ALL_TEAM_RECORDS = Array.from(tmap.values());
+      await saveTeamStore(ALL_TEAM_RECORDS);
+      loaded.push(teamRecords.length + ' team-period records');
+    }
+  }
+
+  if(loaded.length === 0){
+    showToast(file.name + ': no recognisable data found');
+    return;
+  }
+
+  INGESTED_FILES.push(file.name);
+  await saveFiles(INGESTED_FILES);
+  showToast(file.name + ': loaded ' + loaded.join(', '));
+}
+
+/* ---------- render ---------- */
+let viewGranularity = 'All';
+
+function distinctPeriods(){
+  const map = new Map();
+  for(const r of ALL_RECORDS){
+    const k = r.periodType+'||'+r.periodLabel;
+    if(!map.has(k)) map.set(k, {key:k, label:r.periodLabel, type:r.periodType, dateGuess:r.dateGuess, spanDays:r.spanDays, granularity:r.granularity});
+  }
+  return Array.from(map.values()).sort((a,b)=>b.dateGuess-a.dateGuess);
+}
+
+function periodsForGranularity(g){
+  const all = distinctPeriods();
+  return g==='All' ? all : all.filter(p=>p.granularity===g);
+}
+
+function renderGranularityTabs(){
+  const el = document.getElementById('granularityTabs');
+  const counts = {Daily:0, Weekly:0, Monthly:0, All: distinctPeriods().length};
+  for(const p of distinctPeriods()) counts[p.granularity] = (counts[p.granularity]||0)+1;
+  el.innerHTML = ['Daily','Weekly','Monthly','All'].map(g=>
+    `<button class="gtab ${viewGranularity===g?'active':''}" data-g="${g}">${g} ${counts[g]?`(${counts[g]})`:''}</button>`
+  ).join('');
+  el.querySelectorAll('.gtab').forEach(b=>{
+    b.addEventListener('click', ()=>{ viewGranularity = b.getAttribute('data-g'); storageSet('unifon-view-granularity', viewGranularity); render(); });
+  });
+}
+
+function renderPeriodSelect(){
+  const sel = document.getElementById('periodSelect');
+  const periods = periodsForGranularity(viewGranularity);
+  const prev = sel.value;
+  if(periods.length===0){
+    sel.innerHTML = '';
+    return;
+  }
+  sel.innerHTML = periods.map(p=>`<option value="${p.key}">${p.type==='Month'?'📅 ':'🗓 '}${p.label}</option>`).join('');
+  if(periods.some(p=>p.key===prev)) sel.value = prev;
+}
+
+function computeFlags(rows, minVol, amberGap, redGap, absFloor=75){
+  const eligible = rows.filter(r=>r.attempts>=minVol);
+  if(eligible.length===0) return {flags:[], teamAvgAnswer:null, teamAvgTimeout:null};
+  const teamAvgAnswer  = eligible.reduce((s,r)=>s+r.answerRate,0)/eligible.length;
+  const teamAvgTimeout = eligible.reduce((s,r)=>s+r.timeoutRate,0)/eligible.length;
+  const flags = [];
+  for(const r of eligible){
+    const gapAnswer  = teamAvgAnswer - r.answerRate;
+    const gapTimeout = r.timeoutRate - teamAvgTimeout;
+    let level=null, reasons=[];
+    // Absolute floor — red regardless of where the rest of the team sits
+    if(r.answerRate < absFloor){
+      level='red';
+      reasons.push(`answer rate ${r.answerRate.toFixed(0)}% is below the ${absFloor}% minimum`);
+    }
+    // Relative to team average
+    if(gapAnswer>=redGap){ level='red'; reasons.push(`${r.answerRate.toFixed(0)}% vs team avg ${teamAvgAnswer.toFixed(0)}%`); }
+    else if(gapAnswer>=amberGap && level!=='red'){ level='amber'; reasons.push(`${r.answerRate.toFixed(0)}% vs team avg ${teamAvgAnswer.toFixed(0)}%`); }
+    if(gapTimeout>=redGap){ level='red'; reasons.push(`timeout rate ${r.timeoutRate.toFixed(0)}% vs team avg ${teamAvgTimeout.toFixed(0)}%`); }
+    else if(gapTimeout>=amberGap && level!=='red'){ level='amber'; reasons.push(`timeout rate ${r.timeoutRate.toFixed(0)}% vs team avg ${teamAvgTimeout.toFixed(0)}%`); }
+    if(level) flags.push({name:r.name, level, reason:reasons.join(' · ')});
+  }
+  flags.sort((a,b)=> (a.level==='red'?0:1) - (b.level==='red'?0:1));
+  return {flags, teamAvgAnswer, teamAvgTimeout};
+}
+
+function ragFor(r, teamAvgAnswer, minVol, amberGap, redGap){
+  if(r.attempts<minVol) return 'grey';
+  const gap = teamAvgAnswer - r.answerRate;
+  if(gap>=redGap) return 'red';
+  if(gap>=amberGap) return 'amber';
+  return 'green';
+}
+
+function trendFor(name, periodKey){
+  const periods = distinctPeriods();
+  const idx = periods.findIndex(p=>p.key===periodKey);
+  if(idx===-1 || idx===periods.length-1) return null;
+  const curr = ALL_RECORDS.find(r=>r.name===name && r.periodType+'||'+r.periodLabel===periodKey);
+  // find nearest earlier period (higher idx = earlier since sorted desc) with same periodType
+  for(let j=idx+1;j<periods.length;j++){
+    if(periods[j].type!==periods[idx].type) continue;
+    const prev = ALL_RECORDS.find(r=>r.name===name && r.periodType+'||'+r.periodLabel===periods[j].key);
+    if(prev && curr && prev.answerRate!=null && curr.answerRate!=null){
+      return curr.answerRate - prev.answerRate;
+    }
+  }
+  return null;
+}
+
+function renderTeamStats(periodKey){
+  const card = document.getElementById('teamStatsCard');
+  const tr = ALL_TEAM_RECORDS.find(r => r.periodType+'||'+r.periodLabel === periodKey);
+  if(!tr){ card.style.display='none'; return; }
+  card.style.display='block';
+  const answerRate = tr.totalCalls>0 ? (tr.answered/tr.totalCalls*100) : null;
+  const overKpiPct  = tr.totalCalls>0 && tr.overKpi>0 ? (tr.overKpi/tr.totalCalls*100) : null;
+  const stats = [
+    ['Answered',           tr.answered],
+    ['Missed',             tr.missed],
+    ['Answer rate',        answerRate!=null ? answerRate.toFixed(0)+'%' : '—'],
+    ['Over KPI',           overKpiPct!=null ? overKpiPct.toFixed(0)+'%' : '—'],
+    ['Avg queue wait',     tr.avgWaitOverall ? fmtDur(tr.avgWaitOverall) : '—'],
+    ['Avg abandon wait',   tr.avgWaitMissed  ? fmtDur(tr.avgWaitMissed)  : '—'],
+    ['Callback requests',  tr.callbackRequests || 0],
+  ];
+  document.getElementById('teamStatsGrid').innerHTML = stats.map(([l,v])=>
+    `<div class="mini" style="background:var(--grey-1)"><div class="l">${l}</div><div class="v">${v}</div></div>`
+  ).join('');
+}
+
+/* ---------- period navigation ---------- */
+function stepPeriod(delta){
+  const sel = document.getElementById('periodSelect');
+  const opts = Array.from(sel.options);
+  const idx = opts.findIndex(o => o.value === sel.value);
+  const next = idx + delta;
+  if(next >= 0 && next < opts.length){ sel.value = opts[next].value; render(); }
+}
+
+/* ---------- call log (raw calls-report) ---------- */
+let callSortKey = 'answered', callSortDir = -1;
+
+function distinctCallPeriods(){
+  const map = new Map();
+  for(const r of ALL_CALL_RECORDS){
+    const k = r.periodType+'||'+r.periodLabel;
+    if(!map.has(k)) map.set(k, {key:k, label:r.periodLabel, type:r.periodType, dateGuess:r.dateGuess, granularity:r.granularity});
+  }
+  return Array.from(map.values()).sort((a,b)=>b.dateGuess-a.dateGuess);
+}
+
+function renderCallPeriodSelect(){
+  const sel = document.getElementById('callPeriodSelect');
+  const periods = distinctCallPeriods();
+  const prev = sel.value;
+  sel.innerHTML = periods.map(p=>`<option value="${p.key}">${p.type==='Range'?'🗓 ':'📆 '}${p.label}</option>`).join('');
+  if(periods.some(p=>p.key===prev)) sel.value = prev;
+}
+
+function stepCallPeriod(delta){
+  const sel = document.getElementById('callPeriodSelect');
+  const opts = Array.from(sel.options);
+  const idx = opts.findIndex(o => o.value === sel.value);
+  const next = idx + delta;
+  if(next >= 0 && next < opts.length){ sel.value = opts[next].value; renderCallStats(); }
+}
+
+function renderCallStats(){
+  const card = document.getElementById('callLogCard');
+  if(!ALL_CALL_RECORDS.length){ card.style.display='none'; return; }
+  card.style.display='block';
+
+  renderCallPeriodSelect();
+  const periods = distinctCallPeriods();
+  const sel = document.getElementById('callPeriodSelect');
+  const periodKey = sel.value || periods[0].key;
+  const periodInfo = periods.find(p=>p.key===periodKey) || periods[0];
+  document.getElementById('callLogPeriodTitle').textContent = periodInfo ? '— '+periodInfo.label : '';
+
+  let rows = ALL_CALL_RECORDS.filter(r => r.periodType+'||'+r.periodLabel === periodInfo.key);
+  rows.sort((a,b)=>{
+    let av=a[callSortKey], bv=b[callSortKey];
+    if(av==null) av=-Infinity; if(bv==null) bv=-Infinity;
+    if(typeof av==='string') return av.localeCompare(bv)*callSortDir;
+    return (av-bv)*callSortDir;
+  });
+
+  document.getElementById('callTbody').innerHTML = rows.map(r=>`
+    <tr>
+      <td><span class="name">${r.name}</span><div class="queues">${r.queues}</div></td>
+      <td>${r.answered}</td>
+      <td>${fmtDur(r.avgTalk)}</td>
+      <td>${fmtDur(r.maxTalk)}</td>
+      <td>${fmtDur(r.avgWait)}</td>
+      <td>${fmtDur(r.maxWait)}</td>
+    </tr>
+  `).join('');
+}
+
+/* ---------- copy table ---------- */
+function copyTable(){
+  const headers = ['Agent','Answered','Answer rate','Timeout rate','Avg handle time','Avg wait','Log-offs','Trend'];
+  const tbody = document.getElementById('tbody');
+  const dataRows = Array.from(tbody.querySelectorAll('tr.agent-row')).map(tr =>
+    Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim().replace(/\n+/g,' '))
+  );
+  const text = [headers, ...dataRows].map(r => r.join('\t')).join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const fb = document.getElementById('copyFeedback');
+    fb.classList.add('show');
+    setTimeout(() => fb.classList.remove('show'), 2000);
+  }).catch(() => showToast('Could not access clipboard'));
+}
+
+/* ---------- distinct queues ---------- */
+function distinctQueues(){
+  const qs = new Set();
+  for(const r of ALL_RECORDS){
+    if(r.queues) r.queues.split(',').map(q => q.trim()).filter(Boolean).forEach(q => qs.add(q));
+  }
+  return Array.from(qs).sort();
+}
+
+function renderQueueFilter(){
+  const sel = document.getElementById('queueFilter');
+  const prev = sel.value;
+  const queues = distinctQueues();
+  sel.innerHTML = '<option value="All">All queues</option>' +
+    queues.map(q => `<option value="${q}">${q}</option>`).join('');
+  if(queues.includes(prev)) sel.value = prev;
+  else sel.value = 'All';
+  queueFilterVal = sel.value;
+}
+
+/* ---------- availability ---------- */
+function calcTodayAvailability(){
+  const byAgent = new Map();
+  for(const e of liveEvents.filter(e => isToday(e.ts) && (e.direction==='in'||e.direction==='out'))){
+    if(!byAgent.has(e.name)) byAgent.set(e.name, []);
+    byAgent.get(e.name).push(e);
+  }
+  const now = Date.now();
+  const result = new Map();
+  for(const [name, evts] of byAgent){
+    evts.sort((a,b)=>a.ts-b.ts);
+    let onlineMs = 0, lastIn = null;
+    for(const e of evts){
+      if(e.direction==='in') lastIn = e.ts;
+      else if(e.direction==='out' && lastIn!=null){ onlineMs += e.ts - lastIn; lastIn = null; }
+    }
+    if(lastIn!=null) onlineMs += now - lastIn;
+    const totalMs = now - evts[0].ts;
+    result.set(name, totalMs > 0 ? Math.round(onlineMs / totalMs * 100) : 0);
+  }
+  return result;
+}
+
+function logoffsForPeriod(periodInfo){
+  if(!periodInfo || !liveEvents.length) return new Map();
+  const start = periodInfo.dateGuess;
+  const end   = start + (periodInfo.spanDays || 1) * 24 * 3600 * 1000;
+  const counts = new Map();
+  for(const e of liveEvents){
+    if(e.direction === 'out' && e.ts >= start && e.ts < end)
+      counts.set(e.name, (counts.get(e.name) || 0) + 1);
+  }
+  return counts;
+}
+
+function render(){
+  renderCallStats();
+  const anyData = ALL_RECORDS.length || ALL_CALL_RECORDS.length;
+  document.getElementById('noData').style.display = anyData? 'none':'block';
+  document.getElementById('app').style.display = ALL_RECORDS.length? 'block':'none';
+  if(!ALL_RECORDS.length) return;
+
+  renderGranularityTabs();
+  renderPeriodSelect();
+  const periods = periodsForGranularity(viewGranularity);
+  const sel = document.getElementById('periodSelect');
+
+  if(periods.length===0){
+    document.getElementById('periodTitle').textContent = '';
+    document.getElementById('flags').innerHTML = `<div class="empty">No ${viewGranularity.toLowerCase()} reports loaded yet — upload a Unifon export of that length, or pick a different tab.</div>`;
+    document.getElementById('tbody').innerHTML = '';
+    return;
+  }
+
+  const periodKey = sel.value || periods[0].key;
+  const periodInfo = periods.find(p=>p.key===periodKey) || periods[0];
+  document.getElementById('periodTitle').textContent = periodInfo ? periodInfo.label : '';
+
+  renderTeamStats(periodKey);
+  renderQueueFilter();
+
+  const minVol = parseInt(document.getElementById('minVol').value)||1;
+  const amberGap = parseFloat(document.getElementById('amberGap').value)||10;
+  const redGap = parseFloat(document.getElementById('redGap').value)||20;
+
+  let rows = ALL_RECORDS.filter(r=> periodInfo && r.periodType+'||'+r.periodLabel===periodInfo.key);
+  const logoffsMap = logoffsForPeriod(periodInfo);
+  rows = rows.map(r=>({...r, trend: trendFor(r.name, periodInfo.key), logoffs: logoffsMap.size ? (logoffsMap.get(r.name) ?? 0) : null}));
+
+  // Queue filter
+  if(queueFilterVal && queueFilterVal !== 'All'){
+    rows = rows.filter(r => r.queues && r.queues.split(',').map(q=>q.trim()).includes(queueFilterVal));
+  }
+  // Agent search
+  if(agentSearchVal){
+    rows = rows.filter(r => r.name.toLowerCase().includes(agentSearchVal));
+  }
+
+  rows.sort((a,b)=>{
+    let av=a[sortKey], bv=b[sortKey];
+    if(av==null) av=-Infinity; if(bv==null) bv=-Infinity;
+    if(typeof av==='string') return av.localeCompare(bv)*sortDir;
+    return (av-bv)*sortDir;
+  });
+
+  const absFloor = parseFloat(document.getElementById('absFloor').value) ?? 75;
+  const {flags, teamAvgAnswer} = computeFlags(rows, minVol, amberGap, redGap, absFloor);
+  const flagsEl = document.getElementById('flags');
+  if(flags.length===0){
+    flagsEl.innerHTML = '<div class="empty">No agents flagged this period — everyone is within normal range.</div>';
+  } else {
+    flagsEl.innerHTML = flags.map(f=>`
+      <div class="flag ${f.level}"><span class="dot"></span><b>${f.name}</b><span class="reason">— ${f.reason}</span></div>
+    `).join('');
+  }
+
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = rows.map(r=>{
+    const rag = ragFor(r, teamAvgAnswer||0, minVol, amberGap, redGap);
+    const trendHtml = r.trend==null ? '<span class="trend">—</span>' :
+      r.trend>1 ? `<span class="trend up">▲ +${r.trend.toFixed(0)}pt</span>` :
+      r.trend<-1 ? `<span class="trend down">▼ ${r.trend.toFixed(0)}pt</span>` :
+      `<span class="trend">→ steady</span>`;
+    return `
+      <tr class="agent-row" data-name="${r.name}">
+        <td><span class="rag ${rag}"></span><span class="name">${r.name}</span><div class="queues">${r.queues}</div></td>
+        <td>${r.answered}</td>
+        <td>${r.answerRate!=null? r.answerRate.toFixed(0)+'%':'—'}</td>
+        <td>${r.timeoutRate!=null? r.timeoutRate.toFixed(0)+'%':'—'}</td>
+        <td>${fmtDur(r.avgTalk)}</td>
+        <td>${fmtDur(r.avgWaitAnswered)}</td>
+        <td>${r.logoffs != null ? r.logoffs : '—'}</td>
+        <td>${trendHtml}</td>
+      </tr>
+      <tr class="detail" id="detail-${r.name.replace(/\s+/g,'_')}"><td colspan="8">${renderDetail(r.name)}</td></tr>
+    `;
+  }).join('');
+
+  tbody.querySelectorAll('tr.agent-row').forEach(tr=>{
+    tr.addEventListener('click', ()=>{
+      const name = tr.getAttribute('data-name');
+      const id = 'detail-'+name.replace(/\s+/g,'_');
+      const el = document.getElementById(id);
+      const wasOpen = el.classList.contains('open');
+      document.querySelectorAll('.detail.open').forEach(d=>d.classList.remove('open'));
+      if(!wasOpen) el.classList.add('open');
+    });
+  });
+}
+
+function renderDetail(name){
+  const history = ALL_RECORDS.filter(r=>r.name===name && r.periodType==='Month')
+    .sort((a,b)=>b.dateGuess-a.dateGuess);
+  if(history.length===0) return '<div class="empty">No month-by-month history yet for this agent — upload a report spanning multiple months to see a trend.</div>';
+  return `
+    <div class="histrow">
+      <table style="background:transparent;">
+        <thead><tr><th>Period</th><th>Answered</th><th>Answer rate</th><th>Timeout rate</th><th>Avg handle time</th><th>Avg wait</th></tr></thead>
+        <tbody>
+          ${history.map(h=>`<tr><td>${h.periodLabel}</td><td>${h.answered}</td><td>${h.answerRate!=null?h.answerRate.toFixed(0)+'%':'—'}</td><td>${h.timeoutRate!=null?h.timeoutRate.toFixed(0)+'%':'—'}</td><td>${fmtDur(h.avgTalk)}</td><td>${fmtDur(h.avgWaitAnswered)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+/* ---------- events ---------- */
+document.querySelectorAll('th[data-sort]').forEach(th=>{
+  th.addEventListener('click', ()=>{
+    const key = th.getAttribute('data-sort');
+    if(sortKey===key) sortDir*=-1; else { sortKey=key; sortDir=-1; }
+    localStorage.setItem('unifon-sort-key', sortKey);
+    localStorage.setItem('unifon-sort-dir', String(sortDir));
+    render();
+  });
+});
+document.getElementById('periodSelect').addEventListener('change', render);
+document.getElementById('periodPrevBtn').addEventListener('click', () => stepPeriod(1));
+document.getElementById('periodNextBtn').addEventListener('click', () => stepPeriod(-1));
+document.getElementById('callPeriodSelect').addEventListener('change', renderCallStats);
+document.getElementById('callPeriodPrevBtn').addEventListener('click', () => stepCallPeriod(1));
+document.getElementById('callPeriodNextBtn').addEventListener('click', () => stepCallPeriod(-1));
+document.querySelectorAll('th[data-sort-call]').forEach(th=>{
+  th.addEventListener('click', ()=>{
+    const key = th.getAttribute('data-sort-call');
+    if(callSortKey===key) callSortDir*=-1; else { callSortKey=key; callSortDir=-1; }
+    renderCallStats();
+  });
+});
+document.getElementById('agentSearch').addEventListener('input', e => { agentSearchVal = e.target.value.trim().toLowerCase(); render(); });
+document.getElementById('queueFilter').addEventListener('change', e => { queueFilterVal = e.target.value; render(); });
+document.getElementById('minVol').addEventListener('input', render);
+document.getElementById('amberGap').addEventListener('input', render);
+document.getElementById('redGap').addEventListener('input', render);
+document.getElementById('absFloor').addEventListener('input', render);
+document.getElementById('toggleThresholds').addEventListener('click', ()=>{
+  const c = document.getElementById('thresholdsCard');
+  c.style.display = c.style.display==='none' ? 'block' : 'none';
+});
+
+/* ---------- capture source (localhost vs tunnel) ---------- */
+document.getElementById('sourceBtn').addEventListener('click', ()=>{
+  const p = document.getElementById('sourcePanel');
+  p.style.display = p.style.display==='none' ? 'block' : 'none';
+});
+document.getElementById('sourceSaveBtn').addEventListener('click', ()=>{
+  LIVE_BASE = normalizeBaseUrl(document.getElementById('sourceUrlInput').value);
+  localStorage.setItem('unifon-live-base-url', LIVE_BASE);
+  updateSourceUI();
+  showToast('Capture source updated — reconnecting...');
+  lastNotifiedTs = -1; // re-baseline notifications against the new source
+  pollLive();
+});
+document.getElementById('sourceResetBtn').addEventListener('click', ()=>{
+  LIVE_BASE = 'http://localhost:8787';
+  localStorage.setItem('unifon-live-base-url', LIVE_BASE);
+  updateSourceUI();
+  showToast('Reset to localhost');
+  lastNotifiedTs = -1;
+  pollLive();
+});
+
+/* ---------- main tabs (Live / Reports) ---------- */
+function switchMainTab(tab){
+  document.querySelectorAll('.maintab').forEach(t => t.classList.toggle('active', t.getAttribute('data-tab')===tab));
+  document.getElementById('panel-live').style.display = tab==='live' ? 'block' : 'none';
+  document.getElementById('panel-reports').style.display = tab==='reports' ? 'block' : 'none';
+  localStorage.setItem('unifon-main-tab', tab);
+}
+document.querySelectorAll('.maintab').forEach(t=>{
+  t.addEventListener('click', ()=> switchMainTab(t.getAttribute('data-tab')));
+});
+
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('fileInput');
+drop.addEventListener('click', ()=>fileInput.click());
+drop.addEventListener('dragover', e=>{ e.preventDefault(); drop.classList.add('drag'); });
+drop.addEventListener('dragleave', ()=> drop.classList.remove('drag'));
+drop.addEventListener('drop', async e=>{
+  e.preventDefault(); drop.classList.remove('drag');
+  await handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', async e=>{
+  await handleFiles(e.target.files);
+  fileInput.value='';
+});
+
+async function handleFiles(fileList){
+  const files = Array.from(fileList).filter(f=>f.name.endsWith('.xlsx'));
+  for(const f of files){
+    try{ await ingestFile(f); }
+    catch(err){ console.error(err); showToast('Could not read '+f.name); }
+  }
+  renderFileChips();
+  render();
+}
+
+function renderFileChips(){
+  const el = document.getElementById('fileList');
+  el.innerHTML = INGESTED_FILES.map(f=>`<span class="chip">${f}</span>`).join('');
+}
+
+document.getElementById('resetBtn').addEventListener('click', async ()=>{
+  if(!confirm('Clear all loaded Unifon data? This cannot be undone.')) return;
+  ALL_RECORDS=[]; ALL_QUEUE_RECORDS=[]; ALL_TEAM_RECORDS=[]; ALL_CALL_RECORDS=[]; INGESTED_FILES=[];
+  await saveStore(ALL_RECORDS); await saveQueueStore(ALL_QUEUE_RECORDS); await saveTeamStore(ALL_TEAM_RECORDS); await saveCallStore(ALL_CALL_RECORDS); await saveFiles(INGESTED_FILES);
+  renderFileChips(); render();
+});
+
+/* ---------- report generation ---------- */
+function generateReport(){
+  const sel = document.getElementById('periodSelect');
+  if(!sel || !sel.value){ showToast('Select a period first'); return; }
+  const periods = periodsForGranularity(viewGranularity);
+  const periodInfo = periods.find(p=>p.key===sel.value) || periods[0];
+  if(!periodInfo){ showToast('No period selected'); return; }
+
+  const rows = ALL_RECORDS.filter(r=>r.periodType+'||'+r.periodLabel===periodInfo.key);
+  if(!rows.length){ showToast('No data for this period'); return; }
+
+  const minVol  = parseInt(document.getElementById('minVol').value)||1;
+  const amberGap= parseFloat(document.getElementById('amberGap').value)||10;
+  const redGap  = parseFloat(document.getElementById('redGap').value)||20;
+
+  // Team totals — prefer authoritative main-number-report data when available
+  const teamRec = ALL_TEAM_RECORDS.find(r=>r.periodType+'||'+r.periodLabel===periodInfo.key);
+  const derivedAnswered  = rows.reduce((s,r)=>s+r.answered,0);
+  const derivedTimeouts  = rows.reduce((s,r)=>s+r.timeouts,0);
+  const derivedTotal     = derivedAnswered + derivedTimeouts;
+  const teamAnswered  = teamRec ? teamRec.answered   : derivedAnswered;
+  const teamMissed    = teamRec ? teamRec.missed      : derivedTimeouts;
+  const teamTotal     = teamRec ? teamRec.totalCalls  : derivedTotal;
+  const teamAnswerRate= teamTotal>0 ? teamAnswered/teamTotal*100 : 0;
+  const teamTotalTalk = rows.reduce((s,r)=>s+r.totalTalk,0);
+  const teamAvgTalk   = derivedAnswered>0 ? teamTotalTalk/derivedAnswered : 0;
+  const teamAvgWait   = (()=>{ let n=0,d=0; for(const r of rows){n+=r.avgWaitAnswered*r.answered;d+=r.answered;} return d>0?n/d:0; })();
+  const overKpiPct    = teamRec && teamRec.totalCalls>0 && teamRec.overKpi>0 ? (teamRec.overKpi/teamRec.totalCalls*100) : null;
+  const callbackReqs  = teamRec ? teamRec.callbackRequests : null;
+  const avgAbandonWait= teamRec && teamRec.avgWaitMissed>0 ? teamRec.avgWaitMissed : null;
+  const avgQueueWait  = teamRec && teamRec.avgWaitOverall>0 ? teamRec.avgWaitOverall : null;
+
+  // Queue breakdown
+  const qrows = ALL_QUEUE_RECORDS
+    .filter(r=>r.periodType+'||'+r.periodLabel===periodInfo.key)
+    .sort((a,b)=>b.answered-a.answered);
+
+  // Wrapup stats from live capture events filtered to this period's date range
+  const periodStart = periodInfo.dateGuess;
+  const periodEnd   = periodInfo.dateGuess + (periodInfo.spanDays || 1) * 24 * 3600 * 1000;
+  const wrapupEvents = liveEvents.filter(e =>
+    e.direction === 'wrapup_end' && e.ts >= periodStart && e.ts < periodEnd
+  );
+  const wrapupByAgent = new Map();
+  for(const e of wrapupEvents){
+    if(!wrapupByAgent.has(e.name)) wrapupByAgent.set(e.name, {count:0, totalMinutes:0, longest:0, flaggedCount:0});
+    const w = wrapupByAgent.get(e.name);
+    w.count++;
+    w.totalMinutes += e.wrapupMinutes;
+    w.longest = Math.max(w.longest, e.wrapupMinutes);
+    if(e.flagged) w.flaggedCount++;
+  }
+  const wrapupRows = Array.from(wrapupByAgent.entries())
+    .map(([name, w]) => ({name, ...w, avgMinutes: w.totalMinutes / w.count}))
+    .sort((a,b) => b.totalMinutes - a.totalMinutes);
+
+  // Flags + ranked agents
+  const absFloor = parseFloat(document.getElementById('absFloor').value) ?? 75;
+  const {flags, teamAvgAnswer} = computeFlags(rows, minVol, amberGap, redGap, absFloor);
+  const ranked = [...rows].sort((a,b)=>{
+    if(a.answerRate==null) return 1;
+    if(b.answerRate==null) return -1;
+    return b.answerRate - a.answerRate;
+  });
+
+  const today    = new Date();
+  const todayStr = String(today.getDate()).padStart(2,'0')+'.'+String(today.getMonth()+1).padStart(2,'0')+'.'+today.getFullYear();
+
+  function ragDot(r){
+    if(r.attempts<minVol) return '#C9D2E0';
+    const gap=(teamAvgAnswer||0)-r.answerRate;
+    if(gap>=redGap) return '#CF2141';
+    if(gap>=amberGap) return '#F6C34A';
+    return '#008447';
+  }
+
+  const html=`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Unifon Report — ${periodInfo.label}</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600&family=Fira+Sans:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  :root{--navy:#000743;--foreground:#0D101A;--g1:#EEF2F7;--g2:#C9D2E0;--g3:#6B7690;--red:#CF2141;--green:#008447;--yellow:#F6C34A;}
+  *{box-sizing:border-box;}
+  body{margin:0;padding:28px 36px;font-family:'Inter',system-ui,sans-serif;font-weight:500;color:var(--foreground);font-size:13px;line-height:1.5;}
+  h1,h2{font-family:'Inter',sans-serif;font-weight:700;letter-spacing:-0.01em;margin:0;}
+  h2{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--g3);margin-bottom:10px;}
+  .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid var(--navy);}
+  .brand{font-family:'Fira Sans',sans-serif;font-weight:900;font-size:22px;color:var(--navy);}
+  .meta{text-align:right;font-size:12px;color:var(--g3);}
+  .meta strong{display:block;font-family:'Fira Sans',sans-serif;font-weight:900;font-size:17px;color:var(--navy);}
+  .section{margin-bottom:22px;}
+  .stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
+  .stat{background:var(--g1);border-radius:6px;padding:11px 14px;}
+  .stat .l{font-size:10px;text-transform:uppercase;color:var(--g3);letter-spacing:.04em;}
+  .stat .v{font-family:'Fira Sans',sans-serif;font-weight:900;font-size:20px;margin-top:1px;color:var(--navy);}
+  table{width:100%;border-collapse:collapse;font-size:12px;}
+  th{text-align:left;padding:6px 9px;color:var(--g3);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em;background:var(--g1);white-space:nowrap;}
+  td{padding:7px 9px;border-bottom:1px solid var(--g1);white-space:nowrap;}
+  tr:last-child td{border-bottom:none;}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle;flex:0 0 auto;}
+  .flag-row{display:flex;align-items:baseline;gap:8px;padding:8px 11px;border-radius:6px;margin-bottom:5px;font-size:12px;}
+  .flag-row.red{background:#FDEDF0;border:1px solid var(--red);}
+  .flag-row.amber{background:#FFF8E8;border:1px solid var(--yellow);}
+  .empty{color:var(--g3);font-size:12px;padding:4px 0;}
+  .nb{break-inside:avoid;}
+  .footer{margin-top:22px;padding-top:10px;border-top:1px solid var(--g1);font-size:11px;color:var(--g3);display:flex;justify-content:space-between;}
+  .print-btn{position:fixed;bottom:20px;right:20px;font-family:'Inter',sans-serif;font-weight:600;font-size:13px;cursor:pointer;border-radius:6px;padding:10px 18px;border:none;background:var(--navy);color:#fff;box-shadow:0 2px 8px rgba(0,7,67,.25);}
+  @media print{
+    body{padding:0;}
+    @page{size:A4;margin:14mm 12mm;}
+    .print-btn{display:none!important;}
+    .nb{break-inside:avoid;}
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <div class="brand">munu.</div>
+    <div style="font-size:12px;color:var(--g3);margin-top:2px;">Unifon agent performance report</div>
+  </div>
+  <div class="meta">
+    <strong>${periodInfo.label}</strong>
+    Generated ${todayStr}
+  </div>
+</div>
+
+<div class="section nb">
+  <h2>Team overview${teamRec?' <span style="font-size:9px;font-weight:600;letter-spacing:.03em;color:var(--g3);font-family:Inter,sans-serif;text-transform:none;">from main-number report</span>':''}</h2>
+  <div class="stat-grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr));">
+    <div class="stat"><div class="l">Answered</div><div class="v">${teamAnswered}</div></div>
+    <div class="stat"><div class="l">Missed</div><div class="v">${teamMissed}</div></div>
+    <div class="stat"><div class="l">Answer rate</div><div class="v">${teamAnswerRate.toFixed(0)}%</div></div>
+    ${overKpiPct!=null?`<div class="stat"><div class="l">Over KPI</div><div class="v">${overKpiPct.toFixed(0)}%</div></div>`:''}
+    <div class="stat"><div class="l">Avg handle time</div><div class="v">${fmtDur(teamAvgTalk)}</div></div>
+    ${avgQueueWait!=null?`<div class="stat"><div class="l">Avg queue wait</div><div class="v">${fmtDur(avgQueueWait)}</div></div>`:`<div class="stat"><div class="l">Avg wait (ans.)</div><div class="v">${fmtDur(teamAvgWait)}</div></div>`}
+    ${avgAbandonWait!=null?`<div class="stat"><div class="l">Avg abandon wait</div><div class="v">${fmtDur(avgAbandonWait)}</div></div>`:''}
+    ${callbackReqs!=null&&callbackReqs>0?`<div class="stat"><div class="l">Callback requests</div><div class="v">${callbackReqs}</div></div>`:''}
+  </div>
+</div>
+
+${qrows.length>0?`
+<div class="section nb">
+  <h2>Queue breakdown</h2>
+  <table>
+    <thead><tr><th>Queue</th><th>Answered</th><th>Answer rate</th><th>Timeout rate</th><th>Avg handle time</th><th>Avg wait</th></tr></thead>
+    <tbody>
+      ${qrows.map(q=>`<tr>
+        <td style="font-weight:600">${q.queue}</td>
+        <td>${q.answered}</td>
+        <td>${q.answerRate!=null?q.answerRate.toFixed(0)+'%':'—'}</td>
+        <td>${q.attempts>0?((q.timeouts/q.attempts)*100).toFixed(0)+'%':'—'}</td>
+        <td>${fmtDur(q.avgTalk)}</td>
+        <td>${fmtDur(q.avgWait)}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+</div>`:''}
+
+<div class="section nb">
+  <h2>Needs a conversation</h2>
+  ${flags.length===0
+    ?'<div class="empty">No agents flagged — everyone is within normal range.</div>'
+    :flags.map(f=>`<div class="flag-row ${f.level}"><span class="dot" style="background:${f.level==='red'?'#CF2141':'#F6C34A'};margin-top:3px;"></span><strong>${f.name}</strong><span style="color:var(--g3)">— ${f.reason}</span></div>`).join('')}
+</div>
+
+${wrapupRows.length>0?`
+<div class="section nb">
+  <h2>Post-call wrapup — from live capture</h2>
+  <table>
+    <thead><tr><th>Agent</th><th>Wrapup count</th><th>Avg wrapup</th><th>Longest</th><th>Extended (&gt;75s)</th></tr></thead>
+    <tbody>
+      ${wrapupRows.map(w=>`<tr>
+        <td style="font-weight:600">${w.name}</td>
+        <td>${w.count}</td>
+        <td>${(w.avgMinutes*60).toFixed(0)}s</td>
+        <td>${(w.longest*60).toFixed(0)}s</td>
+        <td>${w.flaggedCount>0?`<span style="color:#CF2141;font-weight:600">${w.flaggedCount}</span>`:'—'}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  <div style="font-size:10px;color:var(--g3);margin-top:6px;">Wrapup = off-queue periods &le;90s captured by the local capture server. Only available for weeks where the server was running.</div>
+</div>`:''}
+
+<div class="section">
+  <h2>Agent performance — ranked by answer rate</h2>
+  <table>
+    <thead><tr><th>#</th><th>Agent</th><th>Queues</th><th>Answered</th><th>Answer rate</th><th>Timeout rate</th><th>Avg handle time</th><th>Avg wait</th></tr></thead>
+    <tbody>
+      ${ranked.map((r,i)=>`<tr>
+        <td style="color:var(--g3);font-size:11px;">${r.attempts>=minVol?i+1:'—'}</td>
+        <td style="font-weight:600"><span class="dot" style="background:${ragDot(r)}"></span>${r.name}</td>
+        <td style="color:var(--g3);font-size:11px;">${r.queues}</td>
+        <td>${r.answered}</td>
+        <td>${r.answerRate!=null?r.answerRate.toFixed(0)+'%':'—'}</td>
+        <td>${r.timeoutRate!=null?r.timeoutRate.toFixed(0)+'%':'—'}</td>
+        <td>${fmtDur(r.avgTalk)}</td>
+        <td>${fmtDur(r.avgWaitAnswered)}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+</div>
+
+<div class="footer">
+  <span>munu. — Unifon Agent Performance Dashboard</span>
+  <span>${periodInfo.label} &middot; Generated ${todayStr}</span>
+</div>
+
+<button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  if(!win){ showToast('Pop-up blocked — allow pop-ups for this page to generate reports'); return; }
+  win.document.write(html);
+  win.document.close();
+}
+
+/* ---------- windows notifications ---------- */
+let lastNotifiedTs = -1; // -1 = not yet initialised; set on first successful poll
+
+function updateNotifBtn(){
+  const btn = document.getElementById('notifBtn');
+  if(!btn) return;
+  if(!('Notification' in window)){ btn.style.display='none'; return; }
+  btn.style.display='';
+  if(Notification.permission==='granted'){
+    btn.textContent='Notifications on'; btn.classList.add('notif-on'); btn.classList.remove('ghost');
+  } else {
+    btn.textContent='Enable notifications'; btn.classList.remove('notif-on'); btn.classList.add('ghost');
+  }
+}
+
+async function handleNotifBtn(){
+  if(!('Notification' in window)) return;
+  if(Notification.permission==='granted'){
+    // toggle off — just update label to give feedback; can't actually revoke programmatically
+    showToast('To disable, use your browser site settings');
+    return;
+  }
+  await Notification.requestPermission();
+  updateNotifBtn();
+}
+
+function fireNotification(title, body){
+  if(!('Notification' in window) || Notification.permission!=='granted') return;
+  new Notification(title, { body });
+}
+
+/* ---------- live queue activity (local capture) ----------
+   The capture server's address is configurable, not hardcoded — this same page
+   may be opened either on the machine running capture-server.js (localhost) or
+   from a GitHub-hosted copy viewed elsewhere, in which case it needs the public
+   URL of a tunnel (e.g. Cloudflare Tunnel) pointed at that machine instead.
+*/
+function normalizeBaseUrl(v){
+  v = (v||'').trim().replace(/\/+$/, '');
+  return v || 'http://localhost:8787';
+}
+let LIVE_BASE = (function(){
+  const fromQuery = new URLSearchParams(window.location.search).get('live');
+  if(fromQuery){
+    const cleaned = normalizeBaseUrl(fromQuery);
+    localStorage.setItem('unifon-live-base-url', cleaned);
+    return cleaned;
+  }
+  return normalizeBaseUrl(localStorage.getItem('unifon-live-base-url'));
+})();
+function liveUrl(file){ return LIVE_BASE + '/' + file; }
+function sourceLabel(){
+  try{
+    const host = new URL(LIVE_BASE).hostname;
+    return (host==='localhost' || host==='127.0.0.1') ? 'local capture' : host;
+  }catch(e){ return LIVE_BASE; }
+}
+function updateSourceUI(){
+  const input = document.getElementById('sourceUrlInput');
+  if(input) input.value = LIVE_BASE;
+}
+// Queues whose login/logout events are hidden from the live feed and notifications
+const SUPPRESSED_QUEUES = /vakt/i;
+let liveEvents    = [];
+let liveStatus    = null;
+let liveFilter    = 'All';
+const waitTimeSamples = []; // {ts, avgWait} — accumulated across polls today, for sparkline
+let liveConnected = false;
+
+function fmtWait(seconds){
+  if(!seconds || seconds <= 0) return '—';
+  if(seconds < 60) return Math.round(seconds)+'s';
+  const m = Math.floor(seconds/60), s = Math.round(seconds%60);
+  return s>0 ? `${m}m ${s}s` : `${m}m`;
+}
+
+// Agents are considered "available" for a queue from their first login of the
+// day until this hour — a fixed workday window, not the live per-call ready flag.
+const DAY_END_HOUR = 17;
+
+function calcQueueLoginTimes(){
+  // key `${name}||${queue}` -> earliest 'in' timestamp today
+  const firstLogin = new Map();
+  for(const e of liveEvents){
+    if(e.direction !== 'in' || !isToday(e.ts)) continue;
+    const key = e.name + '||' + (e.queue || '');
+    if(!firstLogin.has(key) || e.ts < firstLogin.get(key)) firstLogin.set(key, e.ts);
+  }
+  return firstLogin;
+}
+
+function countAvailableForQueue(q, loginTimes){
+  const cutoff = new Date();
+  cutoff.setHours(DAY_END_HOUR, 0, 0, 0);
+  if(Date.now() > cutoff.getTime()) return 0;
+  const members = [...(q.ready_agents || []), ...(q.offline_agents || [])];
+  return members.filter(n => loginTimes.has(n + '||' + q.description)).length;
+}
+
+function renderWallboard(){
+  const el = document.getElementById('wallboard');
+  if(!liveConnected || !liveStatus || !liveStatus.queues || !liveStatus.queues.length){
+    el.style.display='none'; return;
+  }
+  // Only show queues that have at least 2 members (skip tiny/unused queues)
+  const queues = liveStatus.queues.filter(q=>q.total>=2);
+  if(!queues.length){ el.style.display='none'; return; }
+  el.style.display='grid';
+  const loginTimes = calcQueueLoginTimes();
+  el.innerHTML = queues.map(q=>{
+    const slowWait = q.answered_waittime > 120;
+    const available = countAvailableForQueue(q, loginTimes);
+    return `
+      <div class="wb-card">
+        <div class="qname">${q.description}</div>
+        <div class="wb-agents">
+          <span class="wb-ready ${available===0?'zero':''}">${available}</span>
+        </div>
+        <div class="wb-sublabel">Active</div>
+        ${q.answered_waittime > 0 ? `
+          <div class="wb-divider"></div>
+          <div class="wb-wait ${slowWait?'slow':''}">${fmtWait(q.answered_waittime)}</div>
+          <div class="wb-sublabel">Avg wait</div>
+        ` : ''}
+      </div>`;
+  }).join('');
+}
+
+function isToday(ts){
+  const d = new Date(ts), now = new Date();
+  return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth() && d.getDate()===now.getDate();
+}
+function fmtTime(ts){
+  const d = new Date(ts);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+
+async function pollLive(){
+  const statusEl = document.getElementById('liveStatus');
+  const statusText = document.getElementById('liveStatusText');
+  try{
+    const [res, sres] = await Promise.all([
+      fetch(liveUrl('events.json'), {cache:'no-store'}),
+      fetch(liveUrl('status.json'), {cache:'no-store'}).catch(()=>null),
+    ]);
+    if(!res.ok) throw new Error('bad response');
+    const fresh = await res.json();
+    if(sres && sres.ok) liveStatus = await sres.json(); else liveStatus = null;
+
+    // Accumulate wait-time sample for TV sparkline
+    if(liveStatus && liveStatus.queues) {
+      const active = liveStatus.queues.filter(q => q.total >= 2 && q.answered_waittime > 0);
+      if(active.length) {
+        const avg = active.reduce((s, q) => s + q.answered_waittime, 0) / active.length;
+        while(waitTimeSamples.length && !isToday(waitTimeSamples[0].ts)) waitTimeSamples.shift();
+        waitTimeSamples.push({ts: Date.now(), avgWait: avg});
+      }
+    }
+
+    if(lastNotifiedTs === -1){
+      // First successful poll — baseline so we don't replay historical events
+      lastNotifiedTs = fresh.length > 0 ? Math.max(...fresh.map(e=>e.ts)) : Date.now();
+    } else {
+      const newEvents = fresh
+        .filter(e => e.ts > lastNotifiedTs && (e.direction==='in' || e.direction==='out') && !SUPPRESSED_QUEUES.test(e.queue||''))
+        .sort((a,b) => a.ts - b.ts);
+      for(const e of newEvents){
+        const title = e.direction==='in' ? `${e.name} logged in` : `${e.name} logged off`;
+        fireNotification(title, e.queue || '');
+      }
+      if(newEvents.length > 0) lastNotifiedTs = Math.max(...newEvents.map(e=>e.ts));
+    }
+
+    liveEvents = fresh;
+    liveConnected = true;
+    statusEl.classList.add('connected');
+    statusText.textContent = 'Connected to ' + sourceLabel() + ' — updating live';
+  }catch(e){
+    liveConnected = false; liveStatus = null;
+    statusEl.classList.remove('connected');
+    statusText.textContent = 'No capture detected at ' + LIVE_BASE + ' — check capture-server.js (and any tunnel) is running there';
+  }
+  renderWallboard();
+  renderLive();
+  renderTV();
+  updateLiveAge();
+}
+
+// The server's own status.json carries the timestamp of its last completed poll
+// to Unifon (liveStatus.ts) — a truer heartbeat than "did our fetch succeed",
+// since that would still report "connected" even if the server's internal poll
+// loop had silently stalled while its HTTP server kept responding with old data.
+function fmtAge(ms){
+  const s = Math.max(0, Math.floor(ms/1000));
+  if(s < 60) return s+'s';
+  const m = Math.floor(s/60);
+  return m+'m '+(s%60)+'s';
+}
+function updateLiveAge(){
+  const el = document.getElementById('liveAge');
+  if(!el) return;
+  if(!liveConnected || !liveStatus || !liveStatus.ts){ el.textContent=''; el.classList.remove('stale'); return; }
+  const age = Date.now() - liveStatus.ts;
+  el.textContent = '· last poll ' + fmtAge(age) + ' ago';
+  el.classList.toggle('stale', age > 60000);
+}
+
+function renderLive(){
+  const todays = liveEvents.filter(e=>isToday(e.ts) && !SUPPRESSED_QUEUES.test(e.queue||'')).sort((a,b)=>b.ts-a.ts);
+  const exitCounts = new Map();
+  for(const e of todays){
+    if(e.direction==='out'){
+      exitCounts.set(e.name, (exitCounts.get(e.name)||0)+1);
+    }
+  }
+
+  // Wrap-up flags — agents whose wrap-up exceeded the threshold today
+  const wrapupByAgent = new Map();
+  for(const e of todays){
+    if(e.direction==='wrapup_end' && e.flagged){
+      if(!wrapupByAgent.has(e.name)) wrapupByAgent.set(e.name, {count:0, totalMinutes:0, longest:0});
+      const w = wrapupByAgent.get(e.name);
+      w.count += 1;
+      w.totalMinutes += e.wrapupMinutes;
+      w.longest = Math.max(w.longest, e.wrapupMinutes);
+    }
+  }
+  const wrapupEl = document.getElementById('wrapupFlags');
+  if(wrapupByAgent.size===0){
+    wrapupEl.innerHTML = '';
+  } else {
+    const rows = Array.from(wrapupByAgent.entries()).sort((a,b)=>b[1].totalMinutes-a[1].totalMinutes);
+    wrapupEl.innerHTML = `<div class="flags" style="margin-bottom:14px;">` + rows.map(([name,w])=>`
+      <div class="flag red"><span class="dot"></span><b>${name}</b><span class="reason">— extended wrap-up ${w.count}× today, longest ${w.longest.toFixed(1)}m, ${w.totalMinutes.toFixed(1)}m total off calls while still logged in</span></div>
+    `).join('') + `</div>`;
+  }
+
+  const availMap = calcTodayAvailability();
+  const chipsEl = document.getElementById('liveChips');
+  const names = ['All', ...Array.from(exitCounts.keys()).sort((a,b)=>exitCounts.get(b)-exitCounts.get(a))];
+  chipsEl.innerHTML = names.map(n=>{
+    if(n==='All') return `<span class="livechip ${liveFilter===n?'active':''}" data-name="${n}">All</span>`;
+    const avail = availMap.has(n) ? `<span class="avail">${availMap.get(n)}%</span>` : '';
+    return `<span class="livechip ${liveFilter===n?'active':''}" data-name="${n}">${n} ×${exitCounts.get(n)}${avail}</span>`;
+  }).join('');
+  chipsEl.querySelectorAll('.livechip').forEach(c=>{
+    c.addEventListener('click', ()=>{ liveFilter = c.getAttribute('data-name'); renderLive(); });
+  });
+
+  const listEl = document.getElementById('liveList');
+  const filtered = liveFilter==='All' ? todays : todays.filter(e=>e.name===liveFilter);
+  if(filtered.length===0){
+    listEl.innerHTML = `<div class="empty">${liveConnected? 'No queue activity captured yet today.' : 'Waiting for local capture to start...'}</div>`;
+    return;
+  }
+  listEl.innerHTML = filtered.map(e=>{
+    if(e.direction==='wrapup_end'){
+      return `
+        <div class="liverow">
+          <span class="dot wrapup ${e.flagged?'flagged':''}"></span>
+          <span class="time">${fmtTime(e.ts)}</span>
+          <span class="who">${e.name}</span>
+          <span>⏱ wrap-up</span>
+          <span class="q">${e.queue||''}</span>
+          <span class="off ${e.flagged?'flagged':''}">${e.wrapupMinutes.toFixed(1)}m</span>
+        </div>
+      `;
+    }
+    return `
+      <div class="liverow">
+        <span class="dot ${e.direction}"></span>
+        <span class="time">${fmtTime(e.ts)}</span>
+        <span class="who">${e.name}</span>
+        <span>${e.direction==='in'?'→':'←'}</span>
+        <span class="q">${e.queue||''}</span>
+        ${e.direction==='in' && e.offMinutes!=null ? `<span class="off">off ${e.offMinutes}m</span>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+setInterval(pollLive, 8000);
+setInterval(updateLiveAge, 1000);
+pollLive();
+
+/* ===== TV VIEW ===== */
+const IS_TV = new URLSearchParams(window.location.search).has('tv');
+
+// Weather location — change to your city coordinates
+const WEATHER_LAT  = 58.9700;
+const WEATHER_LON  = 5.7331;
+const WEATHER_CITY = 'Stavanger';
+let weatherData = null;
+
+function openTV(){
+  const base = window.location.href.split('?')[0];
+  window.open(base + '?tv', '_blank');
+}
+
+function exitTV(){
+  window.location.href = window.location.href.split('?')[0];
+}
+
+function initTV(){
+  document.getElementById('tv-view').classList.add('active');
+  document.querySelector('.wrap').style.display = 'none';
+  document.body.style.padding = '0';
+  document.body.style.background = '#000743';
+
+  // Clock
+  const tick = () => {
+    const d = new Date(), p = n => String(n).padStart(2,'0');
+    document.getElementById('tvClock').textContent = p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+  };
+  tick();
+  setInterval(tick, 1000);
+
+  // Weather — fetch now and every 10 minutes
+  fetchWeather();
+  setInterval(fetchWeather, 600000);
+
+  // Fullscreen change listener — keep button label in sync
+  document.addEventListener('fullscreenchange', () => {
+    const btn = document.getElementById('tvFsBtn');
+    if(btn) btn.title = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen';
+    if(btn) btn.innerHTML = document.fullscreenElement ? '&#x2715;&#xFE0E;' : '&#x26F6;';
+  });
+}
+
+function toggleFullscreen(){
+  if(!document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(()=>{});
+  } else {
+    document.exitFullscreen().catch(()=>{});
+  }
+}
+
+function weatherEmoji(symbol){
+  if(!symbol) return '🌡️';
+  if(symbol.includes('thunder'))               return '⛈️';
+  if(symbol.includes('snow'))                  return '❄️';
+  if(symbol.includes('sleet'))                 return '🌨️';
+  if(symbol.includes('heavyrain'))             return '🌧️';
+  if(symbol.includes('rain') || symbol.includes('shower')) return '🌦️';
+  if(symbol.includes('fog'))                   return '🌫️';
+  if(symbol.includes('clearsky'))              return '☀️';
+  if(symbol.includes('fair'))                  return '🌤️';
+  if(symbol.includes('partlycloudy'))          return '⛅';
+  if(symbol.includes('cloudy'))                return '☁️';
+  return '🌡️';
+}
+
+async function fetchWeather(){
+  try{
+    const url = `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${WEATHER_LAT}&lon=${WEATHER_LON}`;
+    const res = await fetch(url, {cache:'no-store'});
+    if(!res.ok) return;
+    const data = await res.json();
+    const ts = data.properties.timeseries[0];
+    const temp = ts.data.instant.details.air_temperature;
+    const symbol = (ts.data.next_1_hours || ts.data.next_6_hours || {}).summary?.symbol_code || '';
+    weatherData = {temp: Math.round(temp), symbol};
+    renderTVWeather();
+  }catch(e){ /* silently ignore — weather is decorative */ }
+}
+
+function renderTVWeather(){
+  const el = document.getElementById('tvWeather');
+  if(!el) return;
+  if(!weatherData){ el.style.display='none'; return; }
+  el.style.display = 'flex';
+  el.innerHTML = `
+    <span class="wemoji">${weatherEmoji(weatherData.symbol)}</span>
+    <span class="wtemp">${weatherData.temp}°C</span>
+    <span class="wcity">${WEATHER_CITY}</span>
+  `;
+}
+
+function shortWeekLabel(label) {
+  const uke = label.match(/[Uu]ke\s*(\d+)/);
+  if(uke) return 'U' + uke[1];
+  const wk = label.match(/W(\d+)/);
+  if(wk) return 'W' + wk[1];
+  const date = label.match(/(\d{2})\.(\d{2})/);
+  if(date) return date[1] + '/' + date[2];
+  return label.slice(0, 6);
+}
+
+function buildWeeklyRateData() {
+  const weeks = distinctPeriods().filter(p => p.granularity === 'Weekly').slice(0, 7).reverse();
+  const data = weeks.map(period => {
+    const teamRec = ALL_TEAM_RECORDS.find(r => r.periodType+'||'+r.periodLabel === period.key);
+    let rate = null;
+    if(teamRec && teamRec.totalCalls > 0) {
+      rate = teamRec.answered / teamRec.totalCalls * 100;
+    } else {
+      const eligible = ALL_RECORDS
+        .filter(r => r.periodType+'||'+r.periodLabel === period.key && r.attempts >= 5 && r.answerRate != null);
+      if(eligible.length) rate = eligible.reduce((s,r) => s + r.answerRate, 0) / eligible.length;
+    }
+    return rate != null ? {label: period.label, shortLabel: shortWeekLabel(period.label), rate, isRecord: false} : null;
+  }).filter(Boolean);
+  // Mark the latest week as a record if it beats all previous weeks
+  if(data.length >= 2) {
+    const latest = data[data.length - 1];
+    const prevMax = Math.max(...data.slice(0, -1).map(d => d.rate));
+    if(latest.rate >= prevMax) latest.isRecord = true;
+  }
+  return data;
+}
+
+function renderSVGSparkline(samples) {
+  const today = samples.filter(s => isToday(s.ts));
+  const latest = today.length ? today[today.length - 1].avgWait : 0;
+  const isSlow = latest > 120;
+  const color = isSlow ? '#F6C34A' : '#008447';
+  const W = 400, H = 55;
+
+  let svgBody = '';
+  if(today.length >= 2) {
+    const maxV = Math.max(...today.map(s => s.avgWait), 60);
+    const pts = today.map((s, i) => {
+      const x = (i / (today.length - 1)) * W;
+      const y = H - (s.avgWait / maxV) * (H - 4);
+      return [x.toFixed(1), y.toFixed(1)];
+    });
+    const path = pts.map((p, i) => (i===0?'M':'L') + p[0] + ',' + p[1]).join(' ');
+    const area = 'M0,' + H + ' ' + pts.map(p => 'L'+p[0]+','+p[1]).join(' ') + ' L' + W + ',' + H + ' Z';
+    svgBody = `
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:52px;display:block;">
+        <defs>
+          <linearGradient id="wfill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${color}" stop-opacity="0.25"/>
+            <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="${area}" fill="url(#wfill)"/>
+        <path d="${path}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+      </svg>`;
+  }
+
+  const valHtml = today.length
+    ? `<span class="tv-sparkline-big" style="color:${color};">${fmtWait(latest)}</span><span class="tv-sparkline-unit">avg now</span>`
+    : `<span class="tv-sparkline-unit" style="opacity:.25;">Accumulating${today.length===1?' — '+fmtWait(today[0]?.avgWait||0):''}...</span>`;
+  return `<div class="tv-sparkline-val">${valHtml}</div>${svgBody}`;
+}
+
+function renderSVGBars(weeklyData) {
+  if(!weeklyData.length) return '';
+  const W = 400, H = 80;
+  const n = weeklyData.length;
+  const barW = Math.min(48, Math.floor((W - (n - 1) * 8) / n));
+  const totalW = n * barW + (n - 1) * 8;
+  const startX = (W - totalW) / 2;
+  const bars = weeklyData.map((d, i) => {
+    const x = startX + i * (barW + 8);
+    const barH = Math.max(2, (d.rate / 100) * H);
+    const y = H - barH;
+    const isLatest = i === n - 1;
+    const fill = d.isRecord ? '#F6C34A' : isLatest ? '#008447' : 'rgba(255,255,255,0.14)';
+    const valCol = isLatest ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.5)';
+    const lblCol = isLatest ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.3)';
+    const recordLabel = d.isRecord
+      ? `<text x="${(x+barW/2).toFixed(1)}" y="${(y-17).toFixed(1)}" text-anchor="middle" fill="#F6C34A" font-size="9" font-family="Inter,sans-serif" font-weight="700">★ best</text>`
+      : '';
+    return `
+      <rect x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${barH.toFixed(1)}" rx="3" fill="${fill}"/>
+      ${recordLabel}
+      <text x="${(x+barW/2).toFixed(1)}" y="${(y-5).toFixed(1)}" text-anchor="middle" fill="${valCol}" font-size="10" font-family="Inter,sans-serif" font-weight="600">${d.rate.toFixed(0)}%</text>
+      <text x="${(x+barW/2).toFixed(1)}" y="${(H+15).toFixed(1)}" text-anchor="middle" fill="${lblCol}" font-size="9" font-family="Inter,sans-serif">${d.shortLabel}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H+22}" style="width:100%;height:88px;display:block;">${bars}</svg>`;
+}
+
+function renderTV(){
+  if(!IS_TV) return;
+  renderTVWeather();
+  renderTVQueues();
+  renderTVOnline();
+  renderTVStats();
+}
+
+function renderTVQueues(){
+  const el = document.getElementById('tvQueues');
+  const pill = document.getElementById('tvLivePill');
+  const pillText = document.getElementById('tvLiveText');
+  if(!liveConnected || !liveStatus || !liveStatus.queues){
+    el.innerHTML = '<div class="tv-no-live-queues">Waiting for local capture server...</div>';
+    pill.classList.remove('connected');
+    pillText.textContent = 'Not connected';
+    return;
+  }
+  pill.classList.add('connected');
+  pillText.textContent = 'Live';
+  const queues = liveStatus.queues.filter(q => q.total >= 2);
+  if(!queues.length){
+    el.innerHTML = '<div class="tv-no-live-queues">No active queues</div>';
+    return;
+  }
+  const loginTimes = calcQueueLoginTimes();
+  el.innerHTML = queues.map(q => {
+    const available = countAvailableForQueue(q, loginTimes);
+    return `
+    <div class="tv-qcard">
+      <div class="qname-tv">${q.description}</div>
+      <div class="tv-agents">
+        <span class="tv-ready ${available===0?'zero':''}">${available}</span>
+      </div>
+      <div class="tv-sub">Active</div>
+      ${q.answered_waittime > 0 ? `
+        <div class="tv-qdivider"></div>
+        <div class="tv-wait ${q.answered_waittime > 120 ? 'slow' : ''}">${fmtWait(q.answered_waittime)}</div>
+        <div class="tv-sub">Avg wait time</div>
+      ` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderTVOnline(){
+  const el = document.getElementById('tvOnlineList');
+  const today = liveEvents.filter(e => isToday(e.ts) && (e.direction==='in' || e.direction==='out'));
+  const agentState = new Map();
+  for(const e of today.sort((a,b) => a.ts - b.ts)) agentState.set(e.name, e.direction);
+  const online = Array.from(agentState.entries()).filter(([_,d]) => d==='in').map(([n]) => n).sort();
+
+  let agentsHtml;
+  if(!liveConnected){
+    agentsHtml = '<div class="tv-no-data">Capture server not connected</div>';
+  } else if(!online.length){
+    agentsHtml = '<div class="tv-no-data">No agents currently online</div>';
+  } else {
+    agentsHtml = online.map(name => `
+      <div class="tv-agent-row"><span class="adot"></span><span>${name}</span></div>
+    `).join('');
+  }
+
+  // Today's activity stats
+  const todayAll = liveEvents.filter(e => isToday(e.ts));
+  const uniqueActive = new Set(todayAll.map(e => e.name)).size;
+  const loginsToday  = todayAll.filter(e => e.direction === 'in').length;
+  const activityHtml = liveConnected ? `
+    <div class="tv-activity-row">
+      <div class="tv-stat-item">
+        <span class="tv-stat-num">${uniqueActive}</span>
+        <span class="tv-stat-lbl">Agents active today</span>
+      </div>
+      <div class="tv-stat-item">
+        <span class="tv-stat-num">${loginsToday}</span>
+        <span class="tv-stat-lbl">Queue logins today</span>
+      </div>
+    </div>
+  ` : '';
+
+  el.innerHTML = `
+    ${agentsHtml}
+    ${liveConnected ? `<div class="tv-col-divider"></div>${activityHtml}` : ''}
+    <div class="tv-col-divider"></div>
+    <div class="tv-chart-label">Avg wait time — today</div>
+    ${renderSVGSparkline(waitTimeSamples)}
+  `;
+}
+
+function renderTVStats(){
+  const el = document.getElementById('tvStatsContent');
+  if(!ALL_RECORDS.length){
+    el.innerHTML = `
+      <div class="tv-section-label">Weekly performance</div>
+      <div class="tv-no-data">Upload a Unifon report to see performance data</div>`;
+    return;
+  }
+  const allPeriods = distinctPeriods();
+  const period = allPeriods.find(p => p.granularity === 'Weekly') || allPeriods[0];
+  if(!period){ el.innerHTML = ''; return; }
+  const rows = ALL_RECORDS.filter(r => r.periodType+'||'+r.periodLabel === period.key);
+  const eligible = rows.filter(r => r.attempts >= 5 && r.answerRate != null);
+  const teamAvg = eligible.length ? eligible.reduce((s,r) => s + r.answerRate, 0) / eligible.length : null;
+  const ranked = [...eligible].sort((a,b) => b.answerRate - a.answerRate);
+  const {flags} = computeFlags(rows, 5, 10, 20, 75);
+  const weeklyData = buildWeeklyRateData();
+  const sectionTitle = period.granularity === 'Weekly' ? 'Last week' : 'Recent period';
+  el.innerHTML = `
+    <div class="tv-section-label">${sectionTitle}<span class="tv-period-tag">${period.label}</span></div>
+    ${teamAvg != null ? `
+      <div class="tv-team-rate">${teamAvg.toFixed(0)}%</div>
+      <div class="tv-team-label">Team answer rate</div>
+    ` : ''}
+    ${weeklyData.length >= 2 ? `
+      <div class="tv-chart-label">Weekly trend</div>
+      ${renderSVGBars(weeklyData)}
+      <div class="tv-col-divider"></div>
+    ` : ''}
+    ${ranked.slice(0, 4).map((r, i) => `
+      <div class="tv-rank-row">
+        <span class="tv-rank-num">${i+1}</span>
+        <span class="tv-rank-name">${r.name}</span>
+        <span class="tv-rank-rate">${r.answerRate.toFixed(0)}%</span>
+      </div>
+    `).join('')}
+    ${flags.length > 0 ? `
+      <div class="tv-flags-label">Needs a conversation</div>
+      ${flags.map(f => `
+        <div class="tv-flag-row">
+          <span class="fdot" style="background:${f.level==='red'?'#CF2141':'#F6C34A'}"></span>
+          <span>${f.name}</span>
+        </div>
+      `).join('')}
+    ` : ''}
+  `;
+}
+
+/* ---------- init ---------- */
+(async function init(){
+  if(IS_TV) initTV();
+  switchMainTab(localStorage.getItem('unifon-main-tab') || 'live');
+  updateNotifBtn();
+  updateSourceUI();
+  ALL_RECORDS = await loadStore();
+  ALL_QUEUE_RECORDS = await loadQueueStore();
+  ALL_TEAM_RECORDS = await loadTeamStore();
+  ALL_CALL_RECORDS = await loadCallStore();
+  INGESTED_FILES = await loadFiles();
+  renderFileChips();
+  const savedGranularity = await storageGet('unifon-view-granularity');
+  if(savedGranularity) viewGranularity = savedGranularity;
+  const note = document.getElementById('storageNote');
+  note.textContent = hasClaudeStorage
+    ? 'Saved via Claude — data persists as long as you return to this conversation.'
+    : 'Saved locally in this browser on this computer — reopening this same file will keep your data.';
+  render();
+  if(IS_TV) renderTV();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+config.json
+token.json
+events.json
+state.json
+*.xlsx
+.claude/

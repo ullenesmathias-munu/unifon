@@ -1,0 +1,7 @@
+{
+  "client_id": "PASTE_YOUR_CLIENT_ID_HERE",
+  "client_secret": "PASTE_YOUR_CLIENT_SECRET_HERE",
+  "port": 8787,
+  "poll_seconds": 20,
+  "wrapup_seconds": 90
+}
