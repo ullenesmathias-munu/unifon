@@ -456,14 +456,23 @@
   <div class="tabpanel" id="panel-attendance" style="display:none;">
     <div class="card">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; flex-wrap:wrap; gap:8px;">
-        <h2 style="margin-bottom:0;">Team schedule — expected start times</h2>
-        <button class="btn small" id="scheduleSaveBtn">Save schedule</button>
+        <h2 style="margin-bottom:0;">Team schedule — shift rotation</h2>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <button class="btn small" id="scheduleCopyBtn">Copy last week</button>
+          <button class="btn small" id="scheduleSaveBtn">Save schedule</button>
+        </div>
       </div>
-      <div style="font-size:11px; color:var(--grey-3); margin-bottom:10px;">Set each person's expected start time per weekday. Leave a day blank to skip flagging on that day. Shared with everyone viewing this dashboard.</div>
+      <div style="display:flex; align-items:center; gap:10px; margin:6px 0 10px; flex-wrap:wrap;">
+        <button class="btn small" id="schedulePrevWeekBtn">&lsaquo; Prev</button>
+        <span id="scheduleWeekLabel" style="font-size:12px; font-weight:600; min-width:180px; text-align:center;"></span>
+        <button class="btn small" id="scheduleNextWeekBtn">Next &rsaquo;</button>
+        <button class="btn small" id="scheduleThisWeekBtn">This week</button>
+      </div>
+      <div style="font-size:11px; color:var(--grey-3); margin-bottom:10px;">Pick each person's weekday shift (Mon–Fri, on KØ Innenfor åpningstid — or KØ Vakt for evenings) and weekend shift (Sat–Sun, on KØ Vakt). Saved per week — "Copy last week" carries the rotation forward. Shared with everyone viewing this dashboard.</div>
       <div style="overflow-x:auto;">
         <table>
           <thead>
-            <tr><th>Name</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th></tr>
+            <tr><th>Name</th><th>Weekday shift (Mon–Fri)</th><th>Weekend shift (Sat–Sun)</th></tr>
           </thead>
           <tbody id="scheduleTbody"></tbody>
         </table>
@@ -473,7 +482,11 @@
     <div class="card">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
         <h2 style="margin-bottom:0;">Login history</h2>
-        <span style="font-size:11px; color:var(--grey-3);">From live capture — last 30 days</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:11px; color:var(--grey-3);">From live capture — last 30 days</span>
+          <button class="btn ghost small" id="copyAttendanceBtn" onclick="copyAttendanceTable()">Copy table</button>
+          <span class="copy-feedback" id="copyAttendanceFeedback">Copied!</span>
+        </div>
       </div>
       <div class="livechips" id="attendanceChips"></div>
       <div style="overflow-x:auto;">
@@ -1198,6 +1211,20 @@ function copyTable(){
   }).catch(() => showToast('Could not access clipboard'));
 }
 
+function copyAttendanceTable(){
+  const headers = ['Date','Name','First login','Scheduled','Status'];
+  const tbody = document.getElementById('attendanceTbody');
+  const dataRows = Array.from(tbody.querySelectorAll('tr')).map(tr =>
+    Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim().replace(/\n+/g,' '))
+  ).filter(r => r.length === headers.length);
+  const text = [headers, ...dataRows].map(r => r.join('\t')).join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const fb = document.getElementById('copyAttendanceFeedback');
+    fb.classList.add('show');
+    setTimeout(() => fb.classList.remove('show'), 2000);
+  }).catch(() => showToast('Could not access clipboard'));
+}
+
 /* ---------- distinct queues ---------- */
 function distinctQueues(){
   const qs = new Set();
@@ -1433,6 +1460,10 @@ document.querySelectorAll('.maintab').forEach(t=>{
   t.addEventListener('click', ()=> switchMainTab(t.getAttribute('data-tab')));
 });
 document.getElementById('scheduleSaveBtn').addEventListener('click', saveSchedule);
+document.getElementById('scheduleCopyBtn').addEventListener('click', copyLastWeekShifts);
+document.getElementById('schedulePrevWeekBtn').addEventListener('click', ()=>shiftScheduleWeek(-7));
+document.getElementById('scheduleNextWeekBtn').addEventListener('click', ()=>shiftScheduleWeek(7));
+document.getElementById('scheduleThisWeekBtn').addEventListener('click', ()=>{ scheduleWeekMonday = mondayOf(Date.now()); renderScheduleEditor(); });
 
 const drop = document.getElementById('drop');
 const fileInput = document.getElementById('fileInput');
@@ -1761,9 +1792,45 @@ let liveConnected = false;
 
 /* ---------- attendance (schedule + login history) ---------- */
 const WEEKDAY_KEYS = ['sun','mon','tue','wed','thu','fri','sat'];
-const WEEKDAY_COLS = ['mon','tue','wed','thu','fri','sat','sun']; // display order, Mon first
-let schedule = {}; // { [name]: { mon:"08:00", tue:"08:00", ... } } — blank/missing = not flagged
+
+// Fixed shift rotation: weekday shifts run on KØ Innenfor åpningstid (day) or
+// KØ Vakt (evening); weekend shifts always run on KØ Vakt.
+const SHIFT_DEFS = {
+  D1: { label: 'D1 · 07:00–15:00',      start: '07:00', queue: 'KØ Innenfor åpningstid', block: 'weekday' },
+  D2: { label: 'D2 · 08:00–16:00',      start: '08:00', queue: 'KØ Innenfor åpningstid', block: 'weekday' },
+  D3: { label: 'D3 · 09:00–17:00',      start: '09:00', queue: 'KØ Innenfor åpningstid', block: 'weekday' },
+  E:  { label: 'Evening · 17:00–06:00', start: '17:00', queue: 'KØ Vakt',                block: 'weekday' },
+  H1: { label: 'H1 · 07:00–17:00',      start: '07:00', queue: 'KØ Vakt',                block: 'weekend' },
+  H2: { label: 'H2 · 17:00–06:00',      start: '17:00', queue: 'KØ Vakt',                block: 'weekend' },
+};
+const WEEKDAY_SHIFT_OPTIONS = ['', 'D1', 'D2', 'D3', 'E'];
+const WEEKEND_SHIFT_OPTIONS = ['', 'H1', 'H2'];
+
+let schedule = {}; // { [weekMondayDateKey]: { [name]: { weekday:"D1", weekend:"H1" } } }
 let attendanceFilter = 'All';
+
+function mondayOf(ts){
+  const d = new Date(ts);
+  d.setHours(0,0,0,0);
+  const day = d.getDay(); // 0=Sun..6=Sat
+  d.setDate(d.getDate() + (day===0 ? -6 : 1-day));
+  return d;
+}
+function weekKeyFor(ts){ return fmtDateKey(mondayOf(ts).getTime()); }
+function fmtWeekLabel(monday){
+  const sunday = new Date(monday); sunday.setDate(sunday.getDate()+6);
+  const opts = {day:'2-digit', month:'short'};
+  return `Week of ${monday.toLocaleDateString(undefined,opts)} – ${sunday.toLocaleDateString(undefined,opts)} ${sunday.getFullYear()}`;
+}
+
+let scheduleWeekMonday = mondayOf(Date.now());
+
+function shiftScheduleWeek(days){
+  const d = new Date(scheduleWeekMonday);
+  d.setDate(d.getDate()+days);
+  scheduleWeekMonday = d;
+  renderScheduleEditor();
+}
 
 function attendanceNames(){
   return Array.from(new Set(liveEvents.map(e=>e.name))).sort((a,b)=>a.localeCompare(b));
@@ -1777,30 +1844,54 @@ async function loadScheduleThenRender(){
   renderAttendance();
 }
 
+function shiftOptionsHtml(name, block, options, current){
+  return `<select class="search-input schedule-select" data-name="${name}" data-block="${block}">` +
+    options.map(code=>`<option value="${code}" ${current===code?'selected':''}>${code?SHIFT_DEFS[code].label:'Off'}</option>`).join('') +
+    `</select>`;
+}
+
 function renderScheduleEditor(){
   const names = attendanceNames();
   const tbody = document.getElementById('scheduleTbody');
+  document.getElementById('scheduleWeekLabel').textContent = fmtWeekLabel(scheduleWeekMonday);
   if(names.length===0){
-    tbody.innerHTML = `<tr><td colspan="8"><div class="empty">No agents seen yet from live capture — the schedule fills in once login activity has been captured.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="3"><div class="empty">No agents seen yet from live capture — the schedule fills in once login activity has been captured.</div></td></tr>`;
     return;
   }
+  const weekData = schedule[weekKeyFor(scheduleWeekMonday.getTime())] || {};
   tbody.innerHTML = names.map(name=>{
-    const row = schedule[name] || {};
-    const cells = WEEKDAY_COLS.map(day=>
-      `<td><input type="time" class="search-input schedule-input" data-name="${name}" data-day="${day}" value="${row[day]||''}" style="width:100px;"></td>`
-    ).join('');
-    return `<tr><td>${name}</td>${cells}</tr>`;
+    const assign = weekData[name] || {};
+    const weekdaySel = shiftOptionsHtml(name, 'weekday', WEEKDAY_SHIFT_OPTIONS, assign.weekday || '');
+    const weekendSel = shiftOptionsHtml(name, 'weekend', WEEKEND_SHIFT_OPTIONS, assign.weekend || '');
+    return `<tr><td>${name}</td><td>${weekdaySel}</td><td>${weekendSel}</td></tr>`;
   }).join('');
 }
 
-async function saveSchedule(){
-  const next = {};
-  document.querySelectorAll('#scheduleTbody .schedule-input').forEach(inp=>{
-    const name = inp.getAttribute('data-name'), day = inp.getAttribute('data-day');
-    if(!next[name]) next[name] = {};
-    if(inp.value) next[name][day] = inp.value;
+function copyLastWeekShifts(){
+  const prevMonday = new Date(scheduleWeekMonday); prevMonday.setDate(prevMonday.getDate()-7);
+  const prevData = schedule[weekKeyFor(prevMonday.getTime())] || {};
+  document.querySelectorAll('#scheduleTbody tr').forEach(tr=>{
+    const selects = tr.querySelectorAll('.schedule-select');
+    if(!selects.length) return;
+    const name = selects[0].getAttribute('data-name');
+    const entry = prevData[name] || {};
+    selects.forEach(sel=>{ sel.value = entry[sel.getAttribute('data-block')] || ''; });
   });
-  schedule = next;
+  showToast("Copied last week's shifts — remember to Save");
+}
+
+async function saveSchedule(){
+  const wk = weekKeyFor(scheduleWeekMonday.getTime());
+  const weekData = { ...(schedule[wk] || {}) }; // keep entries for names not currently visible
+  document.querySelectorAll('#scheduleTbody tr').forEach(tr=>{
+    const selects = tr.querySelectorAll('.schedule-select');
+    if(!selects.length) return;
+    const name = selects[0].getAttribute('data-name');
+    const entry = {};
+    selects.forEach(sel=>{ if(sel.value) entry[sel.getAttribute('data-block')] = sel.value; });
+    weekData[name] = entry;
+  });
+  schedule = { ...schedule, [wk]: weekData };
   try{
     const res = await fetch(liveUrl('schedule.json'), {
       method: 'POST',
@@ -1837,15 +1928,17 @@ function computeAttendanceRows(){
     const [dateKey, name] = [key.slice(0,10), key.slice(11)];
     const d = new Date(ts);
     const dayKey = WEEKDAY_KEYS[d.getDay()];
-    const scheduledTime = (schedule[name] || {})[dayKey] || null;
+    const block = (dayKey==='sat' || dayKey==='sun') ? 'weekend' : 'weekday';
+    const code = ((schedule[weekKeyFor(ts)] || {})[name] || {})[block] || null;
+    const shift = code ? SHIFT_DEFS[code] : null;
     let status, late = false, scheduledLabel = '—';
-    if(scheduledTime){
-      scheduledLabel = scheduledTime;
-      const [sh, sm] = scheduledTime.split(':').map(Number);
+    if(shift){
+      scheduledLabel = shift.label;
+      const [sh, sm] = shift.start.split(':').map(Number);
       const scheduledTs = new Date(d.getFullYear(), d.getMonth(), d.getDate(), sh, sm).getTime();
-      if(ts > scheduledTs){
+      const lateMin = Math.round((ts - scheduledTs)/60000);
+      if(lateMin > 0){
         late = true;
-        const lateMin = Math.round((ts - scheduledTs)/60000);
         status = `Late by ${lateMin}m`;
       } else {
         status = 'On time';
