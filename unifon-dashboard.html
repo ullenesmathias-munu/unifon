@@ -124,12 +124,12 @@
   .livechip .avail{ font-weight:500; opacity:0.6; font-size:11px; margin-left:3px; }
   .filter-row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
 
-  .override-chips{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; }
-  .override-chip{ display:inline-flex; align-items:center; gap:5px; background:var(--lightblue); color:var(--navy); border-radius:4px; padding:4px 6px 4px 10px; font-size:11px; font-weight:600; white-space:nowrap; }
-  .override-chip .x{ cursor:pointer; border:none; background:none; color:var(--navy); font-size:13px; line-height:1; padding:0 2px; opacity:0.6; }
-  .override-chip .x:hover{ opacity:1; }
-  .override-add{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-  .override-add select{ min-width:0; padding:5px 8px; font-size:12px; }
+  .chip-list{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; }
+  .chip{ display:inline-flex; align-items:center; gap:5px; background:var(--lightblue); color:var(--navy); border-radius:4px; padding:4px 6px 4px 10px; font-size:11px; font-weight:600; white-space:nowrap; }
+  .chip .x{ cursor:pointer; border:none; background:none; color:var(--navy); font-size:13px; line-height:1; padding:0 2px; opacity:0.6; }
+  .chip .x:hover{ opacity:1; }
+  .inline-add{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .inline-add select{ min-width:0; padding:5px 8px; font-size:12px; }
   .search-input{ font-family:'Inter',sans-serif; font-weight:500; font-size:13px; color:var(--navy); border:1px solid var(--grey-2); border-radius:6px; padding:8px 10px; background:#fff; min-width:160px; }
   .search-input::placeholder{ color:var(--grey-3); }
   .btn.nav{ padding:7px 10px; font-size:13px; line-height:1; }
@@ -166,6 +166,13 @@
   .wb-wait.slow{ color:var(--yellow-text); }
   .wb-offline-label{ font-size:9px; color:var(--grey-3); text-transform:uppercase; letter-spacing:.04em; margin:6px 0 3px; }
   .wb-offline-name{ font-size:11px; color:var(--grey-3); text-align:left; padding:1px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  .calls-tiles{ display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr)); gap:10px; margin-bottom:10px; }
+  .oncall-list{ display:flex; flex-direction:column; gap:2px; margin-bottom:16px; }
+  .oncall-row{ display:flex; align-items:center; gap:8px; font-size:13px; padding:5px 2px; }
+  .oncall-row .dot{ background:var(--yellow); }
+  .oncall-row .who{ font-weight:600; width:160px; flex:0 0 auto; }
+  .oncall-row .q{ color:var(--grey-3); }
 
   .toast{
     position:fixed; bottom:20px; right:20px; background:var(--navy); color:var(--white);
@@ -235,6 +242,8 @@
     border-bottom:1px solid rgba(255,255,255,0.06);
   }
   .tv-agent-row .adot{ width:9px; height:9px; border-radius:50%; background:var(--green); flex-shrink:0; }
+  .tv-agent-row .adot.busy{ background:var(--yellow); }
+  .tv-agent-row .on-call-tag{ margin-left:auto; font-size:11px; opacity:0.5; }
 
   .tv-team-rate{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:64px; line-height:1; }
   .tv-team-label{ font-size:11px; opacity:0.4; text-transform:uppercase; letter-spacing:.04em; margin-top:4px; margin-bottom:20px; }
@@ -342,6 +351,7 @@
         <div style="font-size:11px; color:var(--grey-3); margin-top:8px;">Point this at wherever <code>capture-server.js</code> is reachable — <code>http://localhost:8787</code> if this dashboard is open on the same PC as the capture server, or its public tunnel URL (e.g. a Cloudflare Tunnel address) if you're viewing this from elsewhere, like a GitHub-hosted copy of this page.</div>
       </div>
       <div class="wallboard" id="wallboard" style="display:none;"></div>
+      <div id="callsPanel" style="display:none;"></div>
       <div id="wrapupFlags"></div>
       <div class="livechips" id="liveChips"></div>
       <div class="livelist" id="liveList"></div>
@@ -494,6 +504,12 @@
           <button class="btn ghost small" id="copyAttendanceBtn" onclick="copyAttendanceTable()">Copy table</button>
           <span class="copy-feedback" id="copyAttendanceFeedback">Copied!</span>
         </div>
+      </div>
+      <div style="font-size:11px; color:var(--grey-3); margin-bottom:8px;">Hide short-term helpers who don't belong in the regular schedule or history — this just hides them here, their captured events aren't deleted, and unhiding brings everything back.</div>
+      <div class="chip-list" id="hiddenAgentsChips"></div>
+      <div class="inline-add" style="margin-bottom:14px;">
+        <select class="search-input" id="hideAgentSelect"></select>
+        <button class="btn ghost small" id="hideAgentBtn" type="button">Hide from attendance</button>
       </div>
       <div class="livechips" id="attendanceChips"></div>
       <div style="overflow-x:auto;">
@@ -1471,6 +1487,7 @@ document.getElementById('scheduleCopyBtn').addEventListener('click', copyLastWee
 document.getElementById('schedulePrevWeekBtn').addEventListener('click', ()=>shiftScheduleWeek(-7));
 document.getElementById('scheduleNextWeekBtn').addEventListener('click', ()=>shiftScheduleWeek(7));
 document.getElementById('scheduleThisWeekBtn').addEventListener('click', ()=>{ scheduleWeekMonday = mondayOf(Date.now()); renderScheduleEditor(); });
+document.getElementById('hideAgentBtn').addEventListener('click', hideSelectedAgent);
 
 const drop = document.getElementById('drop');
 const fileInput = document.getElementById('fileInput');
@@ -1793,6 +1810,7 @@ function updateSourceUI(){
 const SUPPRESSED_QUEUES = /vakt/i;
 let liveEvents    = [];
 let liveStatus    = null;
+let liveCalls     = null; // { ts, agents:[{name,queue,onCall}], calls:[{id,queue,answered,seconds}] } from /calls.json
 let liveFilter    = 'All';
 const waitTimeSamples = []; // {ts, avgWait} — accumulated across polls today, for sparkline
 let liveConnected = false;
@@ -1821,6 +1839,7 @@ const OVERRIDE_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 // week's default rotation. A key present with value '' means "explicitly Off
 // that day", distinct from no override at all (falls back to weekday/weekend).
 let schedule = {};
+let hiddenAgents = []; // names hidden from schedule + login history, shared via hidden-agents.json
 let attendanceFilter = 'All';
 
 function mondayOf(ts){
@@ -1854,8 +1873,14 @@ function shiftScheduleWeek(days){
   renderScheduleEditor();
 }
 
-function attendanceNames(){
+function allAttendanceNames(){
   return Array.from(new Set(liveEvents.map(e=>e.name))).sort((a,b)=>a.localeCompare(b));
+}
+// Names hidden via "Hide from attendance" (short-term helpers, etc.) — kept
+// out of the schedule editor and login history without touching captured
+// events, so unhiding later brings their history right back.
+function visibleAttendanceNames(){
+  return allAttendanceNames().filter(n => !hiddenAgents.includes(n));
 }
 
 async function loadScheduleThenRender(){
@@ -1863,7 +1888,57 @@ async function loadScheduleThenRender(){
     const res = await fetch(liveUrl('schedule.json'), {cache:'no-store'});
     if(res.ok) schedule = await res.json();
   }catch(e){ /* keep whatever schedule we already have client-side */ }
+  try{
+    const res = await fetch(liveUrl('hidden-agents.json'), {cache:'no-store'});
+    if(res.ok) hiddenAgents = await res.json();
+  }catch(e){ /* keep whatever hidden list we already have client-side */ }
   renderAttendance();
+}
+
+function renderHiddenAgents(){
+  const chipsEl = document.getElementById('hiddenAgentsChips');
+  chipsEl.innerHTML = hiddenAgents.map(name => `
+    <span class="chip" data-name="${name}">${name}<button class="x" type="button" title="Unhide — show again in attendance">&times;</button></span>
+  `).join('');
+  chipsEl.querySelectorAll('.chip').forEach(chip=>{
+    chip.querySelector('.x').addEventListener('click', ()=> unhideAgent(chip.getAttribute('data-name')));
+  });
+
+  const sel = document.getElementById('hideAgentSelect');
+  const toHide = allAttendanceNames().filter(n => !hiddenAgents.includes(n));
+  sel.innerHTML = toHide.length
+    ? toHide.map(n=>`<option value="${n}">${n}</option>`).join('')
+    : `<option value="">No agents to hide</option>`;
+}
+
+async function persistHiddenAgents(){
+  try{
+    const res = await fetch(liveUrl('hidden-agents.json'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(hiddenAgents)
+    });
+    if(!res.ok) throw new Error('bad response');
+  }catch(e){
+    showToast('Could not save — check the capture server is reachable');
+  }
+}
+
+async function hideSelectedAgent(){
+  const sel = document.getElementById('hideAgentSelect');
+  const name = sel.value;
+  if(!name) return;
+  if(!hiddenAgents.includes(name)) hiddenAgents = [...hiddenAgents, name];
+  await persistHiddenAgents();
+  renderAttendance();
+  showToast(`${name} hidden from attendance`);
+}
+
+async function unhideAgent(name){
+  hiddenAgents = hiddenAgents.filter(n => n !== name);
+  await persistHiddenAgents();
+  renderAttendance();
+  showToast(`${name} restored to attendance`);
 }
 
 function shiftOptionsHtml(name, block, options, current){
@@ -1874,11 +1949,11 @@ function shiftOptionsHtml(name, block, options, current){
 
 function overrideChipHtml(name, monday, day, code){
   const label = code ? SHIFT_DEFS[code].label : 'Off';
-  return `<span class="override-chip" data-name="${name}" data-day="${day}" data-code="${code}">${overrideDayLabel(monday, day)}: ${label}<button class="x" type="button" title="Remove override">&times;</button></span>`;
+  return `<span class="chip" data-name="${name}" data-day="${day}" data-code="${code}">${overrideDayLabel(monday, day)}: ${label}<button class="x" type="button" title="Remove override">&times;</button></span>`;
 }
 
 function renderScheduleEditor(){
-  const names = attendanceNames();
+  const names = visibleAttendanceNames();
   const tbody = document.getElementById('scheduleTbody');
   document.getElementById('scheduleWeekLabel').textContent = fmtWeekLabel(scheduleWeekMonday);
   if(names.length===0){
@@ -1899,8 +1974,8 @@ function renderScheduleEditor(){
       <td>${weekdaySel}</td>
       <td>${weekendSel}</td>
       <td>
-        <div class="override-chips" data-name="${name}">${chipsHtml}</div>
-        <div class="override-add">
+        <div class="chip-list" data-name="${name}">${chipsHtml}</div>
+        <div class="inline-add">
           <select class="search-input override-day-select">${dayOptsHtml}</select>
           <select class="search-input override-code-select">${codeOptsHtml}</select>
           <button class="btn ghost small override-add-btn" type="button" data-name="${name}">+ Add</button>
@@ -1918,18 +1993,18 @@ function wireOverrideChipRemove(chip){
 
 function wireOverrideControls(){
   const tbody = document.getElementById('scheduleTbody');
-  tbody.querySelectorAll('.override-chip').forEach(wireOverrideChipRemove);
+  tbody.querySelectorAll('.chip-list .chip').forEach(wireOverrideChipRemove);
   tbody.querySelectorAll('.override-add-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const name = btn.getAttribute('data-name');
       const cell = btn.closest('td');
       const day = cell.querySelector('.override-day-select').value;
       const code = cell.querySelector('.override-code-select').value;
-      const chipsEl = cell.querySelector('.override-chips');
-      const existing = chipsEl.querySelector(`.override-chip[data-day="${day}"]`);
+      const chipsEl = cell.querySelector('.chip-list');
+      const existing = chipsEl.querySelector(`.chip[data-day="${day}"]`);
       if(existing) existing.remove();
       chipsEl.insertAdjacentHTML('beforeend', overrideChipHtml(name, scheduleWeekMonday, day, code));
-      wireOverrideChipRemove(chipsEl.querySelector(`.override-chip[data-day="${day}"]`));
+      wireOverrideChipRemove(chipsEl.querySelector(`.chip[data-day="${day}"]`));
     });
   });
 }
@@ -1957,7 +2032,7 @@ async function saveSchedule(){
     const entry = {};
     selects.forEach(sel=>{ if(sel.value) entry[sel.getAttribute('data-block')] = sel.value; });
     const overrides = {};
-    tr.querySelectorAll('.override-chip').forEach(chip=>{
+    tr.querySelectorAll('.chip-list .chip').forEach(chip=>{
       overrides[chip.getAttribute('data-day')] = chip.getAttribute('data-code') || '';
     });
     if(Object.keys(overrides).length) entry.overrides = overrides;
@@ -1997,7 +2072,7 @@ function fmtDateLabel(dateKey){
 function computeLongBreaksByDayName(){
   const byKey = new Map(); // "dateKey|name" -> [{outTs, inTs}]
   for(const e of liveEvents){
-    if(e.direction !== 'in' || !e.offMinutes || e.offMinutes <= 35) continue;
+    if(e.direction !== 'in' || !e.offMinutes || e.offMinutes <= 35 || hiddenAgents.includes(e.name)) continue;
     const outTs = e.ts - e.offMinutes*60000;
     const dateKey = fmtDateKey(e.ts);
     if(fmtDateKey(outTs) !== dateKey) continue; // spans midnight — not a same-day break
@@ -2026,7 +2101,7 @@ function computeLongBreaksByDayName(){
 function computeAttendanceRows(){
   const firstLoginByDayName = new Map(); // "dateKey|name" -> earliest ts
   for(const e of liveEvents){
-    if(e.direction !== 'in') continue;
+    if(e.direction !== 'in' || hiddenAgents.includes(e.name)) continue;
     const key = fmtDateKey(e.ts) + '|' + e.name;
     const cur = firstLoginByDayName.get(key);
     if(cur===undefined || e.ts < cur) firstLoginByDayName.set(key, e.ts);
@@ -2067,6 +2142,7 @@ function computeAttendanceRows(){
 
 function renderAttendance(){
   renderScheduleEditor();
+  renderHiddenAgents();
   renderAttendanceTable();
 }
 
@@ -2075,7 +2151,7 @@ function renderAttendance(){
 function renderAttendanceTable(){
   const rows = computeAttendanceRows();
 
-  const names = ['All', ...attendanceNames()];
+  const names = ['All', ...visibleAttendanceNames()];
   const chipsEl = document.getElementById('attendanceChips');
   chipsEl.innerHTML = names.map(n=>
     `<span class="livechip ${attendanceFilter===n?'active':''}" data-name="${n}">${n}</span>`
@@ -2176,6 +2252,38 @@ function renderWallboard(){
   }).join('');
 }
 
+function renderCallsPanel(){
+  const el = document.getElementById('callsPanel');
+  if(!liveConnected || !liveCalls){
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'block';
+  const waiting = liveCalls.calls.filter(c => !c.answered);
+  const active = liveCalls.calls.filter(c => c.answered);
+  const onCall = liveCalls.agents.filter(a => a.onCall);
+
+  el.innerHTML = `
+    <div class="calls-tiles">
+      <div class="wb-card">
+        <div class="qname">Waiting</div>
+        <div class="wb-agents"><span class="wb-ready ${waiting.length===0?'zero':''}">${waiting.length}</span></div>
+        <div class="wb-sublabel">Calls in queue</div>
+      </div>
+      <div class="wb-card">
+        <div class="qname">Active</div>
+        <div class="wb-agents"><span class="wb-ready ${active.length===0?'zero':''}">${active.length}</span></div>
+        <div class="wb-sublabel">Calls in progress</div>
+      </div>
+    </div>
+    <div class="oncall-list">
+      ${onCall.length ? onCall.map(a => `
+        <div class="oncall-row"><span class="dot"></span><span class="who">${a.name}</span><span class="q">${a.queue}</span></div>
+      `).join('') : `<div class="empty">No one is on a call right now.</div>`}
+    </div>
+  `;
+}
+
 function isToday(ts){
   const d = new Date(ts), now = new Date();
   return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth() && d.getDate()===now.getDate();
@@ -2189,13 +2297,15 @@ async function pollLive(){
   const statusEl = document.getElementById('liveStatus');
   const statusText = document.getElementById('liveStatusText');
   try{
-    const [res, sres] = await Promise.all([
+    const [res, sres, cres] = await Promise.all([
       fetch(liveUrl('events.json'), {cache:'no-store'}),
       fetch(liveUrl('status.json'), {cache:'no-store'}).catch(()=>null),
+      fetch(liveUrl('calls.json'), {cache:'no-store'}).catch(()=>null),
     ]);
     if(!res.ok) throw new Error('bad response');
     const fresh = await res.json();
     if(sres && sres.ok) liveStatus = await sres.json(); else liveStatus = null;
+    if(cres && cres.ok) liveCalls = await cres.json(); else liveCalls = null;
 
     // Accumulate wait-time sample for TV sparkline
     if(liveStatus && liveStatus.queues) {
@@ -2226,11 +2336,12 @@ async function pollLive(){
     statusEl.classList.add('connected');
     statusText.textContent = 'Connected to ' + sourceLabel() + ' — updating live';
   }catch(e){
-    liveConnected = false; liveStatus = null;
+    liveConnected = false; liveStatus = null; liveCalls = null;
     statusEl.classList.remove('connected');
     statusText.textContent = 'No capture detected at ' + LIVE_BASE + ' — check capture-server.js (and any tunnel) is running there';
   }
   renderWallboard();
+  renderCallsPanel();
   renderLive();
   renderTV();
   renderAttendanceTable();
@@ -2549,7 +2660,7 @@ function renderTVQueues(){
     return;
   }
   const activeKeys = calcQueueActiveKeys();
-  el.innerHTML = queues.map(q => {
+  const queueCardsHtml = queues.map(q => {
     const available = countAvailableForQueue(q, activeKeys);
     return `
     <div class="tv-qcard">
@@ -2565,6 +2676,24 @@ function renderTVQueues(){
       ` : ''}
     </div>`;
   }).join('');
+
+  const callsHtml = liveCalls ? (() => {
+    const waiting = liveCalls.calls.filter(c => !c.answered).length;
+    const active = liveCalls.calls.filter(c => c.answered).length;
+    return `
+    <div class="tv-qcard">
+      <div class="qname-tv">Waiting</div>
+      <div class="tv-agents"><span class="tv-ready ${waiting===0?'zero':''}">${waiting}</span></div>
+      <div class="tv-sub">Calls in queue</div>
+    </div>
+    <div class="tv-qcard">
+      <div class="qname-tv">Active</div>
+      <div class="tv-agents"><span class="tv-ready ${active===0?'zero':''}">${active}</span></div>
+      <div class="tv-sub">Calls in progress</div>
+    </div>`;
+  })() : '';
+
+  el.innerHTML = queueCardsHtml + callsHtml;
 }
 
 function renderTVOnline(){
@@ -2574,6 +2703,8 @@ function renderTVOnline(){
   for(const e of today.sort((a,b) => a.ts - b.ts)) agentState.set(e.name, e.direction);
   const online = Array.from(agentState.entries()).filter(([_,d]) => d==='in').map(([n]) => n).sort();
 
+  const onCallNames = new Set((liveCalls ? liveCalls.agents : []).filter(a => a.onCall).map(a => a.name));
+
   let agentsHtml;
   if(!liveConnected){
     agentsHtml = '<div class="tv-no-data">Capture server not connected</div>';
@@ -2581,7 +2712,7 @@ function renderTVOnline(){
     agentsHtml = '<div class="tv-no-data">No agents currently online</div>';
   } else {
     agentsHtml = online.map(name => `
-      <div class="tv-agent-row"><span class="adot"></span><span>${name}</span></div>
+      <div class="tv-agent-row"><span class="adot ${onCallNames.has(name)?'busy':''}"></span><span>${name}</span>${onCallNames.has(name) ? '<span class="on-call-tag">on a call</span>' : ''}</div>
     `).join('');
   }
 
