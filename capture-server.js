@@ -32,12 +32,38 @@ const {
   client_secret,
   port         = 8787,
   poll_seconds = 20,
-  wrapup_seconds = 90,  // max off-time (seconds) to classify as post-call wrapup
+  wrapup_seconds = 90,   // max off-time (seconds) to classify as post-call wrapup
+  calls_poll_seconds = 4, // live calls change fast, so this polls independently of poll_seconds
 } = config;
 
 if (!client_id || !client_secret) {
   console.error('config.json is missing client_id or client_secret.');
   process.exit(1);
+}
+
+// Queues that exist in Unifon but aren't relevant to scheduling/reporting here.
+const EXCLUDED_QUEUES = ['overflow'];
+function isExcludedQueue(description) {
+  return EXCLUDED_QUEUES.includes(String(description || '').trim().toLowerCase());
+}
+
+const SCHEDULE_PATH = path.join(__dirname, 'schedule.json');
+let schedule = {};
+try {
+  if (fs.existsSync(SCHEDULE_PATH)) schedule = JSON.parse(fs.readFileSync(SCHEDULE_PATH, 'utf8'));
+} catch (e) {
+  console.warn('Could not read existing schedule.json, starting fresh.');
+}
+
+// Names hidden from the dashboard's schedule + login history (e.g. short-term
+// helpers) — kept separate from events.json so hiding someone never touches
+// their captured data, and unhiding brings their history straight back.
+const HIDDEN_AGENTS_PATH = path.join(__dirname, 'hidden-agents.json');
+let hiddenAgents = [];
+try {
+  if (fs.existsSync(HIDDEN_AGENTS_PATH)) hiddenAgents = JSON.parse(fs.readFileSync(HIDDEN_AGENTS_PATH, 'utf8'));
+} catch (e) {
+  console.warn('Could not read existing hidden-agents.json, starting fresh.');
 }
 
 const EVENTS_PATH = path.join(__dirname, 'events.json');
@@ -117,6 +143,14 @@ let lastRawResponse = null;
 // Current queue snapshot — served at /status.json for the live wallboard
 let currentStatus = null;
 
+// Live call/agent state — served at /calls.json. Comes from Unifon's own
+// wallboard GraphQL API (graphql.unifon.no), not the REST queue/summary
+// endpoint above, since that one has no call- or busy-state data at all. The
+// same client_credentials token already works against it. Deliberately never
+// requests callerid or the agent's own phone number ("user") — this is a
+// presence indicator, not a call log.
+let currentCalls = null;
+
 function saveEvents() {
   const cutoff = Date.now() - 30 * 24 * 3600 * 1000; // keep 30 days
   events = events.filter(e => e.ts >= cutoff);
@@ -143,11 +177,12 @@ async function poll() {
     const data = await res.json();
     lastRawResponse = data;
     const now = Date.now();
+    const entries = (data.entries || []).filter(q => !isExcludedQueue(q.description));
 
     // Build the status snapshot for the live wallboard
     currentStatus = {
       ts: now,
-      queues: (data.entries || []).map(q => {
+      queues: entries.map(q => {
         const members = (q.members || []).filter(m => m.mobile || m.fixed);
         const getName = m => [m.firstname, m.lastname].filter(Boolean).join(' ') || m.catalog_id;
         const readyMembers   = members.filter(m => !!((m.mobile && m.mobile.ready) || (m.fixed && m.fixed.ready)));
@@ -164,7 +199,7 @@ async function poll() {
       }),
     };
 
-    for (const q of (data.entries || [])) {
+    for (const q of entries) {
       for (const m of (q.members || [])) {
         const name = [m.firstname, m.lastname].filter(Boolean).join(' ') || m.catalog_id;
         const device = m.mobile || m.fixed;
@@ -246,17 +281,131 @@ async function poll() {
 setInterval(poll, poll_seconds * 1000);
 poll();
 
+const LIVE_CALLS_QUERY = `{
+  LiveAgentOverview(queue: []) {
+    user_name
+    queue_id
+    queue_name
+    state
+  }
+  LiveQueueCall(queue: []) {
+    id
+    date_start
+    date_answer
+    queue_id
+    queue_name
+    state
+  }
+}`;
+
+async function pollCalls() {
+  try {
+    const tok = await getToken();
+    const res = await fetch('https://graphql.unifon.no/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+      body: JSON.stringify({ query: LIVE_CALLS_QUERY })
+    });
+    if (!res.ok) {
+      console.error('live-calls poll failed:', res.status, await res.text().catch(() => ''));
+      return;
+    }
+    const { data } = await res.json();
+    const now = Date.now();
+
+    const agents = (data.LiveAgentOverview || [])
+      .filter(a => !isExcludedQueue(a.queue_name))
+      .map(a => ({ name: a.user_name, queue: a.queue_name, onCall: a.state !== 'idle' }));
+
+    // date_answer is the zero value ("0001-01-01T00:00:00Z") until the call is
+    // picked up — that's how a still-waiting call is told apart from an active one.
+    const calls = (data.LiveQueueCall || [])
+      .filter(c => !isExcludedQueue(c.queue_name))
+      .map(c => {
+        const answered = !!c.date_answer && !c.date_answer.startsWith('0001-01-01');
+        const sinceTs = new Date(answered ? c.date_answer : c.date_start).getTime();
+        return {
+          id: c.id,
+          queue: c.queue_name,
+          answered,
+          seconds: Math.max(0, Math.round((now - sinceTs) / 1000)),
+        };
+      });
+
+    currentCalls = { ts: now, agents, calls };
+  } catch (err) {
+    console.error('live-calls poll error:', err.message);
+  }
+}
+
+setInterval(pollCalls, calls_poll_seconds * 1000);
+pollCalls();
+
 const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   if (req.url.startsWith('/events.json')) {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(events));
   } else if (req.url.startsWith('/status.json')) {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(currentStatus || {}));
+  } else if (req.url.startsWith('/calls.json')) {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(currentCalls || { ts: Date.now(), agents: [], calls: [] }));
   } else if (req.url.startsWith('/debug.json')) {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(lastRawResponse, null, 2));
+  } else if (req.url.startsWith('/schedule.json') && req.method === 'GET') {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(schedule));
+  } else if (req.url.startsWith('/schedule.json') && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > 1e6) req.destroy(); // guard against runaway/malicious bodies
+    });
+    req.on('end', () => {
+      try {
+        schedule = JSON.parse(body);
+        fs.writeFileSync(SCHEDULE_PATH, JSON.stringify(schedule));
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(400);
+        res.end('Invalid JSON');
+      }
+    });
+  } else if (req.url.startsWith('/hidden-agents.json') && req.method === 'GET') {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(hiddenAgents));
+  } else if (req.url.startsWith('/hidden-agents.json') && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > 1e6) req.destroy(); // guard against runaway/malicious bodies
+    });
+    req.on('end', () => {
+      try {
+        const parsed = JSON.parse(body);
+        if (!Array.isArray(parsed)) throw new Error('expected an array of names');
+        hiddenAgents = parsed;
+        fs.writeFileSync(HIDDEN_AGENTS_PATH, JSON.stringify(hiddenAgents));
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(400);
+        res.end('Invalid JSON');
+      }
+    });
   } else {
     res.writeHead(404);
     res.end('Not found');
