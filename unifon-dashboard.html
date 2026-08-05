@@ -123,6 +123,13 @@
   .livechip.active{ background:var(--navy); color:var(--white); }
   .livechip .avail{ font-weight:500; opacity:0.6; font-size:11px; margin-left:3px; }
   .filter-row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+
+  .override-chips{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; }
+  .override-chip{ display:inline-flex; align-items:center; gap:5px; background:var(--lightblue); color:var(--navy); border-radius:4px; padding:4px 6px 4px 10px; font-size:11px; font-weight:600; white-space:nowrap; }
+  .override-chip .x{ cursor:pointer; border:none; background:none; color:var(--navy); font-size:13px; line-height:1; padding:0 2px; opacity:0.6; }
+  .override-chip .x:hover{ opacity:1; }
+  .override-add{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .override-add select{ min-width:0; padding:5px 8px; font-size:12px; }
   .search-input{ font-family:'Inter',sans-serif; font-weight:500; font-size:13px; color:var(--navy); border:1px solid var(--grey-2); border-radius:6px; padding:8px 10px; background:#fff; min-width:160px; }
   .search-input::placeholder{ color:var(--grey-3); }
   .btn.nav{ padding:7px 10px; font-size:13px; line-height:1; }
@@ -468,11 +475,11 @@
         <button class="btn small" id="scheduleNextWeekBtn">Next &rsaquo;</button>
         <button class="btn small" id="scheduleThisWeekBtn">This week</button>
       </div>
-      <div style="font-size:11px; color:var(--grey-3); margin-bottom:10px;">Pick each person's weekday shift (Mon–Fri, on KØ Innenfor åpningstid — or KØ Vakt for evenings) and weekend shift (Sat–Sun, on KØ Vakt). Saved per week — "Copy last week" carries the rotation forward. Shared with everyone viewing this dashboard.</div>
+      <div style="font-size:11px; color:var(--grey-3); margin-bottom:10px;">Pick each person's weekday shift (Mon–Fri, on KØ Innenfor åpningstid — or KØ Vakt for evenings) and weekend shift (Sat–Sun, on KØ Vakt) as the default rotation. Use "Day overrides" for one-off exceptions — e.g. someone covering a different shift on a single date. Saved per week — "Copy last week" carries the default rotation forward (overrides are not copied, since they're tied to a specific date). Shared with everyone viewing this dashboard.</div>
       <div style="overflow-x:auto;">
         <table>
           <thead>
-            <tr><th>Name</th><th>Weekday shift (Mon–Fri)</th><th>Weekend shift (Sat–Sun)</th></tr>
+            <tr><th>Name</th><th>Weekday shift (Mon–Fri)</th><th>Weekend shift (Sat–Sun)</th><th>Day overrides</th></tr>
           </thead>
           <tbody id="scheduleTbody"></tbody>
         </table>
@@ -492,7 +499,7 @@
       <div style="overflow-x:auto;">
         <table>
           <thead>
-            <tr><th>Date</th><th>Name</th><th>First login</th><th>Scheduled</th><th>Status</th></tr>
+            <tr><th>Date</th><th>Name</th><th>First login</th><th>Long breaks (&gt;35m)</th><th>Scheduled</th><th>Status</th></tr>
           </thead>
           <tbody id="attendanceTbody"></tbody>
         </table>
@@ -1212,7 +1219,7 @@ function copyTable(){
 }
 
 function copyAttendanceTable(){
-  const headers = ['Date','Name','First login','Scheduled','Status'];
+  const headers = ['Date','Name','First login','Long breaks (>35m)','Scheduled','Status'];
   const tbody = document.getElementById('attendanceTbody');
   const dataRows = Array.from(tbody.querySelectorAll('tr')).map(tr =>
     Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim().replace(/\n+/g,' '))
@@ -1805,8 +1812,15 @@ const SHIFT_DEFS = {
 };
 const WEEKDAY_SHIFT_OPTIONS = ['', 'D1', 'D2', 'D3', 'E'];
 const WEEKEND_SHIFT_OPTIONS = ['', 'H1', 'H2'];
+const ALL_SHIFT_OPTIONS = ['', ...Object.keys(SHIFT_DEFS)];
+const OVERRIDE_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
-let schedule = {}; // { [weekMondayDateKey]: { [name]: { weekday:"D1", weekend:"H1" } } }
+// schedule[weekMondayDateKey][name] = { weekday:"D1", weekend:"H1", overrides:{mon:"D3"} }
+// `overrides` holds one-off exceptions for specific dates within that week —
+// a shift-swap covering a single day shouldn't require changing the whole
+// week's default rotation. A key present with value '' means "explicitly Off
+// that day", distinct from no override at all (falls back to weekday/weekend).
+let schedule = {};
 let attendanceFilter = 'All';
 
 function mondayOf(ts){
@@ -1821,6 +1835,14 @@ function fmtWeekLabel(monday){
   const sunday = new Date(monday); sunday.setDate(sunday.getDate()+6);
   const opts = {day:'2-digit', month:'short'};
   return `Week of ${monday.toLocaleDateString(undefined,opts)} – ${sunday.toLocaleDateString(undefined,opts)} ${sunday.getFullYear()}`;
+}
+function dateForOverrideDay(monday, dayKey){
+  const d = new Date(monday);
+  d.setDate(d.getDate() + OVERRIDE_DAY_KEYS.indexOf(dayKey));
+  return d;
+}
+function overrideDayLabel(monday, dayKey){
+  return dateForOverrideDay(monday, dayKey).toLocaleDateString(undefined, {weekday:'short', day:'2-digit', month:'short'});
 }
 
 let scheduleWeekMonday = mondayOf(Date.now());
@@ -1850,21 +1872,66 @@ function shiftOptionsHtml(name, block, options, current){
     `</select>`;
 }
 
+function overrideChipHtml(name, monday, day, code){
+  const label = code ? SHIFT_DEFS[code].label : 'Off';
+  return `<span class="override-chip" data-name="${name}" data-day="${day}" data-code="${code}">${overrideDayLabel(monday, day)}: ${label}<button class="x" type="button" title="Remove override">&times;</button></span>`;
+}
+
 function renderScheduleEditor(){
   const names = attendanceNames();
   const tbody = document.getElementById('scheduleTbody');
   document.getElementById('scheduleWeekLabel').textContent = fmtWeekLabel(scheduleWeekMonday);
   if(names.length===0){
-    tbody.innerHTML = `<tr><td colspan="3"><div class="empty">No agents seen yet from live capture — the schedule fills in once login activity has been captured.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4"><div class="empty">No agents seen yet from live capture — the schedule fills in once login activity has been captured.</div></td></tr>`;
     return;
   }
   const weekData = schedule[weekKeyFor(scheduleWeekMonday.getTime())] || {};
+  const dayOptsHtml = OVERRIDE_DAY_KEYS.map(day=>`<option value="${day}">${overrideDayLabel(scheduleWeekMonday, day)}</option>`).join('');
+  const codeOptsHtml = ALL_SHIFT_OPTIONS.map(code=>`<option value="${code}">${code?SHIFT_DEFS[code].label:'Off'}</option>`).join('');
   tbody.innerHTML = names.map(name=>{
     const assign = weekData[name] || {};
     const weekdaySel = shiftOptionsHtml(name, 'weekday', WEEKDAY_SHIFT_OPTIONS, assign.weekday || '');
     const weekendSel = shiftOptionsHtml(name, 'weekend', WEEKEND_SHIFT_OPTIONS, assign.weekend || '');
-    return `<tr><td>${name}</td><td>${weekdaySel}</td><td>${weekendSel}</td></tr>`;
+    const overrides = assign.overrides || {};
+    const chipsHtml = Object.keys(overrides).map(day=>overrideChipHtml(name, scheduleWeekMonday, day, overrides[day])).join('');
+    return `<tr>
+      <td>${name}</td>
+      <td>${weekdaySel}</td>
+      <td>${weekendSel}</td>
+      <td>
+        <div class="override-chips" data-name="${name}">${chipsHtml}</div>
+        <div class="override-add">
+          <select class="search-input override-day-select">${dayOptsHtml}</select>
+          <select class="search-input override-code-select">${codeOptsHtml}</select>
+          <button class="btn ghost small override-add-btn" type="button" data-name="${name}">+ Add</button>
+        </div>
+      </td>
+    </tr>`;
   }).join('');
+
+  wireOverrideControls();
+}
+
+function wireOverrideChipRemove(chip){
+  chip.querySelector('.x').addEventListener('click', ()=>{ chip.remove(); });
+}
+
+function wireOverrideControls(){
+  const tbody = document.getElementById('scheduleTbody');
+  tbody.querySelectorAll('.override-chip').forEach(wireOverrideChipRemove);
+  tbody.querySelectorAll('.override-add-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const name = btn.getAttribute('data-name');
+      const cell = btn.closest('td');
+      const day = cell.querySelector('.override-day-select').value;
+      const code = cell.querySelector('.override-code-select').value;
+      const chipsEl = cell.querySelector('.override-chips');
+      const existing = chipsEl.querySelector(`.override-chip[data-day="${day}"]`);
+      if(existing) existing.remove();
+      chipsEl.insertAdjacentHTML('beforeend', overrideChipHtml(name, scheduleWeekMonday, day, code));
+      wireOverrideChipRemove(chipsEl.querySelector(`.override-chip[data-day="${day}"]`));
+    });
+  });
 }
 
 function copyLastWeekShifts(){
@@ -1889,6 +1956,11 @@ async function saveSchedule(){
     const name = selects[0].getAttribute('data-name');
     const entry = {};
     selects.forEach(sel=>{ if(sel.value) entry[sel.getAttribute('data-block')] = sel.value; });
+    const overrides = {};
+    tr.querySelectorAll('.override-chip').forEach(chip=>{
+      overrides[chip.getAttribute('data-day')] = chip.getAttribute('data-code') || '';
+    });
+    if(Object.keys(overrides).length) entry.overrides = overrides;
     weekData[name] = entry;
   });
   schedule = { ...schedule, [wk]: weekData };
@@ -1915,6 +1987,42 @@ function fmtDateLabel(dateKey){
   return new Date(y, m-1, d).toLocaleDateString(undefined, {weekday:'short', day:'2-digit', month:'short'});
 }
 
+// The capture server already stamps each "in" event with offMinutes — how
+// long that agent/queue pair was off before this login. A gap counts as a
+// same-day break only if the matching logoff falls on the same calendar date
+// as the login; this is what excludes the overnight "off since last night's
+// shift end" gap (900+ minutes) from being flagged as a long break.
+// Breaks from different queues that overlap/abut (agent listed on 2 queues
+// during one lunch) are merged so one lunch doesn't show up as two entries.
+function computeLongBreaksByDayName(){
+  const byKey = new Map(); // "dateKey|name" -> [{outTs, inTs}]
+  for(const e of liveEvents){
+    if(e.direction !== 'in' || !e.offMinutes || e.offMinutes <= 35) continue;
+    const outTs = e.ts - e.offMinutes*60000;
+    const dateKey = fmtDateKey(e.ts);
+    if(fmtDateKey(outTs) !== dateKey) continue; // spans midnight — not a same-day break
+    const key = dateKey + '|' + e.name;
+    if(!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push({ outTs, inTs: e.ts });
+  }
+  const merged = new Map();
+  for(const [key, list] of byKey.entries()){
+    list.sort((a,b)=>a.outTs-b.outTs);
+    const out = [];
+    for(const b of list){
+      const last = out[out.length-1];
+      if(last && b.outTs <= last.inTs + 2*60000){
+        last.inTs = Math.max(last.inTs, b.inTs);
+      } else {
+        out.push({ outTs: b.outTs, inTs: b.inTs });
+      }
+    }
+    out.forEach(b => b.minutes = Math.round((b.inTs - b.outTs)/60000));
+    merged.set(key, out);
+  }
+  return merged;
+}
+
 function computeAttendanceRows(){
   const firstLoginByDayName = new Map(); // "dateKey|name" -> earliest ts
   for(const e of liveEvents){
@@ -1923,13 +2031,18 @@ function computeAttendanceRows(){
     const cur = firstLoginByDayName.get(key);
     if(cur===undefined || e.ts < cur) firstLoginByDayName.set(key, e.ts);
   }
+  const longBreaks = computeLongBreaksByDayName();
   const rows = [];
   for(const [key, ts] of firstLoginByDayName.entries()){
     const [dateKey, name] = [key.slice(0,10), key.slice(11)];
     const d = new Date(ts);
     const dayKey = WEEKDAY_KEYS[d.getDay()];
     const block = (dayKey==='sat' || dayKey==='sun') ? 'weekend' : 'weekday';
-    const code = ((schedule[weekKeyFor(ts)] || {})[name] || {})[block] || null;
+    const entry = (schedule[weekKeyFor(ts)] || {})[name] || {};
+    const overrides = entry.overrides || {};
+    const overrideDay = OVERRIDE_DAY_KEYS[(d.getDay()+6)%7]; // WEEKDAY_KEYS[getDay()] is sun-first; overrides are keyed mon-first
+    const hasOverride = Object.prototype.hasOwnProperty.call(overrides, overrideDay);
+    const code = hasOverride ? (overrides[overrideDay] || null) : (entry[block] || null);
     const shift = code ? SHIFT_DEFS[code] : null;
     let status, late = false, scheduledLabel = '—';
     if(shift){
@@ -1946,7 +2059,7 @@ function computeAttendanceRows(){
     } else {
       status = 'No schedule set';
     }
-    rows.push({ dateKey, name, ts, scheduledLabel, status, late });
+    rows.push({ dateKey, name, ts, scheduledLabel, status, late, breaks: longBreaks.get(key) || [] });
   }
   rows.sort((a,b) => b.ts - a.ts);
   return rows;
@@ -1974,18 +2087,24 @@ function renderAttendanceTable(){
   const filtered = attendanceFilter==='All' ? rows : rows.filter(r=>r.name===attendanceFilter);
   const tbody = document.getElementById('attendanceTbody');
   if(filtered.length===0){
-    tbody.innerHTML = `<tr><td colspan="5"><div class="empty">No login history captured yet.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty">No login history captured yet.</div></td></tr>`;
     return;
   }
-  tbody.innerHTML = filtered.map(r=>`
+  tbody.innerHTML = filtered.map(r=>{
+    const breaksLabel = r.breaks.length
+      ? r.breaks.map(b=>`${fmtTime(b.outTs)}–${fmtTime(b.inTs)} (${b.minutes}m)`).join(', ')
+      : '—';
+    return `
     <tr>
       <td>${fmtDateLabel(r.dateKey)}</td>
       <td>${r.name}</td>
       <td>${fmtTime(r.ts)}</td>
+      <td style="color:${r.breaks.length?'var(--red)':'var(--grey-3)'};">${breaksLabel}</td>
       <td>${r.scheduledLabel}</td>
       <td style="color:${r.late?'var(--red)':(r.status==='On time'?'var(--green)':'var(--grey-3)')};">${r.status}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function fmtWait(seconds){
@@ -1999,23 +2118,33 @@ function fmtWait(seconds){
 // day until this hour — a fixed workday window, not the live per-call ready flag.
 const DAY_END_HOUR = 17;
 
-function calcQueueLoginTimes(){
-  // key `${name}||${queue}` -> earliest 'in' timestamp today
-  const firstLogin = new Map();
+// "Active" = still logged in on that queue, not necessarily ready this exact
+// second (so a call or wrap-up doesn't make the count flicker). Determined by
+// each agent/queue pair's most recent event today: 'in'/'wrapup_end' means
+// they're still on; a genuine 'out' means they've logged off for good and
+// should stop counting, even though they logged in earlier today.
+function calcQueueActiveKeys(){
+  const latest = new Map(); // key `${name}||${queue}` -> {ts, direction}
   for(const e of liveEvents){
-    if(e.direction !== 'in' || !isToday(e.ts)) continue;
+    if(!isToday(e.ts)) continue;
+    if(e.direction !== 'in' && e.direction !== 'out' && e.direction !== 'wrapup_end') continue;
     const key = e.name + '||' + (e.queue || '');
-    if(!firstLogin.has(key) || e.ts < firstLogin.get(key)) firstLogin.set(key, e.ts);
+    const cur = latest.get(key);
+    if(!cur || e.ts > cur.ts) latest.set(key, { ts: e.ts, direction: e.direction });
   }
-  return firstLogin;
+  const active = new Set();
+  for(const [key, v] of latest.entries()){
+    if(v.direction !== 'out') active.add(key);
+  }
+  return active;
 }
 
-function countAvailableForQueue(q, loginTimes){
+function countAvailableForQueue(q, activeKeys){
   const cutoff = new Date();
   cutoff.setHours(DAY_END_HOUR, 0, 0, 0);
   if(Date.now() > cutoff.getTime()) return 0;
   const members = [...(q.ready_agents || []), ...(q.offline_agents || [])];
-  return members.filter(n => loginTimes.has(n + '||' + q.description)).length;
+  return members.filter(n => activeKeys.has(n + '||' + q.description)).length;
 }
 
 function renderWallboard(){
@@ -2027,10 +2156,10 @@ function renderWallboard(){
   const queues = liveStatus.queues.filter(q=>q.total>=2);
   if(!queues.length){ el.style.display='none'; return; }
   el.style.display='grid';
-  const loginTimes = calcQueueLoginTimes();
+  const activeKeys = calcQueueActiveKeys();
   el.innerHTML = queues.map(q=>{
     const slowWait = q.answered_waittime > 120;
-    const available = countAvailableForQueue(q, loginTimes);
+    const available = countAvailableForQueue(q, activeKeys);
     return `
       <div class="wb-card">
         <div class="qname">${q.description}</div>
@@ -2419,9 +2548,9 @@ function renderTVQueues(){
     el.innerHTML = '<div class="tv-no-live-queues">No active queues</div>';
     return;
   }
-  const loginTimes = calcQueueLoginTimes();
+  const activeKeys = calcQueueActiveKeys();
   el.innerHTML = queues.map(q => {
-    const available = countAvailableForQueue(q, loginTimes);
+    const available = countAvailableForQueue(q, activeKeys);
     return `
     <div class="tv-qcard">
       <div class="qname-tv">${q.description}</div>
