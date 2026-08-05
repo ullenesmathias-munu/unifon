@@ -130,6 +130,14 @@
   .chip .x:hover{ opacity:1; }
   .inline-add{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
   .inline-add select{ min-width:0; padding:5px 8px; font-size:12px; }
+
+  .sched-table th.day-col, .sched-table td.day-col{ text-align:center; }
+  .sched-table th.today-col{ background:var(--lightblue); }
+  .sched-table td.today-col{ background:rgba(214,243,255,0.4); }
+  .sched-table .day-head{ display:flex; flex-direction:column; align-items:center; gap:1px; }
+  .sched-table .day-head .dow{ font-size:11px; }
+  .sched-table .day-head .dm{ font-size:10px; font-weight:500; color:var(--grey-3); text-transform:none; letter-spacing:0; }
+  .day-select{ font-family:'Inter',sans-serif; font-size:11px; font-weight:700; padding:5px 8px; border-radius:6px; border:1px solid rgba(0,0,0,0.08); text-align:center; text-align-last:center; min-width:88px; cursor:pointer; }
   .search-input{ font-family:'Inter',sans-serif; font-weight:500; font-size:13px; color:var(--navy); border:1px solid var(--grey-2); border-radius:6px; padding:8px 10px; background:#fff; min-width:160px; }
   .search-input::placeholder{ color:var(--grey-3); }
   .btn.nav{ padding:7px 10px; font-size:13px; line-height:1; }
@@ -485,11 +493,11 @@
         <button class="btn small" id="scheduleNextWeekBtn">Next &rsaquo;</button>
         <button class="btn small" id="scheduleThisWeekBtn">This week</button>
       </div>
-      <div style="font-size:11px; color:var(--grey-3); margin-bottom:10px;">Pick each person's weekday shift (Mon–Fri, on KØ Innenfor åpningstid — or KØ Vakt for evenings) and weekend shift (Sat–Sun, on KØ Vakt) as the default rotation. Use "Day overrides" for one-off exceptions — e.g. someone covering a different shift on a single date. Saved per week — "Copy last week" carries the default rotation forward (overrides are not copied, since they're tied to a specific date). Shared with everyone viewing this dashboard.</div>
+      <div style="font-size:11px; color:var(--grey-3); margin-bottom:10px;">Pick each person's shift for each individual day — every day is independent, so covering a different shift on a single date doesn't require changing the rest of the week. Saved per week — "Copy last week" carries this week's picks forward. Shared with everyone viewing this dashboard.</div>
       <div style="overflow-x:auto;">
-        <table>
+        <table class="sched-table">
           <thead>
-            <tr><th>Name</th><th>Weekday shift (Mon–Fri)</th><th>Weekend shift (Sat–Sun)</th><th>Day overrides</th></tr>
+            <tr id="scheduleHeaderRow"><th>Name</th></tr>
           </thead>
           <tbody id="scheduleTbody"></tbody>
         </table>
@@ -1828,16 +1836,27 @@ const SHIFT_DEFS = {
   H1: { label: 'H1 · 07:00–17:00',      start: '07:00', queue: 'KØ Vakt',                block: 'weekend' },
   H2: { label: 'H2 · 17:00–06:00',      start: '17:00', queue: 'KØ Vakt',                block: 'weekend' },
 };
-const WEEKDAY_SHIFT_OPTIONS = ['', 'D1', 'D2', 'D3', 'E'];
-const WEEKEND_SHIFT_OPTIONS = ['', 'H1', 'H2'];
 const ALL_SHIFT_OPTIONS = ['', ...Object.keys(SHIFT_DEFS)];
-const OVERRIDE_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const WEEK_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
-// schedule[weekMondayDateKey][name] = { weekday:"D1", weekend:"H1", overrides:{mon:"D3"} }
-// `overrides` holds one-off exceptions for specific dates within that week —
-// a shift-swap covering a single day shouldn't require changing the whole
-// week's default rotation. A key present with value '' means "explicitly Off
-// that day", distinct from no override at all (falls back to weekday/weekend).
+// Pill colors per shift code — matches the palette used in the other Munu
+// planner dashboard (index.html) so shift codes read the same across tools.
+const SHIFT_COLORS = {
+  D1: { bg: '#b39ddb', fg: '#1a0040' },
+  D2: { bg: '#9ccc65', fg: '#1a3300' },
+  D3: { bg: '#7fb3d5', fg: '#002040' },
+  E:  { bg: '#ffb74d', fg: '#3d2000' },
+  H1: { bg: '#4dd0e1', fg: '#00363d' },
+  H2: { bg: '#f48fb1', fg: '#3d001a' },
+};
+const OFF_COLOR = { bg: '#EEF2F7', fg: '#6B7690' }; // var(--grey-1)/var(--grey-3)
+
+// schedule[weekMondayDateKey][name] = { mon:"D1", tue:"D1", ..., sun:"" }
+// Every day is independent — no separate "weekday pattern" or override concept,
+// so covering a different shift on one date is just picking a different value
+// in that day's own cell. Older entries (weekday/weekend/overrides fields from
+// before this was per-day) are read via resolveDayCode()'s legacy fallback,
+// and get upgraded to the per-day shape the next time the week is saved.
 let schedule = {};
 let hiddenAgents = []; // names hidden from schedule + login history, shared via hidden-agents.json
 let attendanceFilter = 'All';
@@ -1855,13 +1874,25 @@ function fmtWeekLabel(monday){
   const opts = {day:'2-digit', month:'short'};
   return `Week of ${monday.toLocaleDateString(undefined,opts)} – ${sunday.toLocaleDateString(undefined,opts)} ${sunday.getFullYear()}`;
 }
-function dateForOverrideDay(monday, dayKey){
+function dateForWeekDay(monday, dayKey){
   const d = new Date(monday);
-  d.setDate(d.getDate() + OVERRIDE_DAY_KEYS.indexOf(dayKey));
+  d.setDate(d.getDate() + WEEK_DAY_KEYS.indexOf(dayKey));
   return d;
 }
-function overrideDayLabel(monday, dayKey){
-  return dateForOverrideDay(monday, dayKey).toLocaleDateString(undefined, {weekday:'short', day:'2-digit', month:'short'});
+function weekDayHeaderParts(monday, dayKey){
+  const d = dateForWeekDay(monday, dayKey);
+  return { dow: dayKey.toUpperCase(), dm: `${d.getDate()}/${d.getMonth()+1}`, dateKey: fmtDateKey(d.getTime()) };
+}
+
+// Resolves the scheduled code for a given day, preferring the new per-day
+// shape and falling back to the older weekday/weekend+overrides shape for
+// weeks saved before this was per-day (upgraded automatically on next Save).
+function resolveDayCode(entry, dayKey, block){
+  if(!entry) return null;
+  if(WEEK_DAY_KEYS.some(k => k in entry)) return entry[dayKey] || null;
+  const overrides = entry.overrides || {};
+  if(Object.prototype.hasOwnProperty.call(overrides, dayKey)) return overrides[dayKey] || null;
+  return entry[block] || null;
 }
 
 let scheduleWeekMonday = mondayOf(Date.now());
@@ -1941,71 +1972,53 @@ async function unhideAgent(name){
   showToast(`${name} restored to attendance`);
 }
 
-function shiftOptionsHtml(name, block, options, current){
-  return `<select class="search-input schedule-select" data-name="${name}" data-block="${block}">` +
-    options.map(code=>`<option value="${code}" ${current===code?'selected':''}>${code?SHIFT_DEFS[code].label:'Off'}</option>`).join('') +
+function colorizeDaySelect(sel){
+  const c = sel.value ? (SHIFT_COLORS[sel.value] || OFF_COLOR) : OFF_COLOR;
+  sel.style.background = c.bg;
+  sel.style.color = c.fg;
+}
+
+function daySelectHtml(name, dayKey, current){
+  return `<select class="day-select" data-name="${name}" data-day="${dayKey}">` +
+    ALL_SHIFT_OPTIONS.map(code=>`<option value="${code}" ${current===code?'selected':''}>${code || '—'}</option>`).join('') +
     `</select>`;
 }
 
-function overrideChipHtml(name, monday, day, code){
-  const label = code ? SHIFT_DEFS[code].label : 'Off';
-  return `<span class="chip" data-name="${name}" data-day="${day}" data-code="${code}">${overrideDayLabel(monday, day)}: ${label}<button class="x" type="button" title="Remove override">&times;</button></span>`;
+function renderScheduleHeader(){
+  const headerRow = document.getElementById('scheduleHeaderRow');
+  const todayKey = fmtDateKey(Date.now());
+  headerRow.innerHTML = '<th>Name</th>' + WEEK_DAY_KEYS.map(day=>{
+    const { dow, dm, dateKey } = weekDayHeaderParts(scheduleWeekMonday, day);
+    const isToday = dateKey === todayKey;
+    return `<th class="day-col ${isToday?'today-col':''}"><div class="day-head"><span class="dow">${dow}</span><span class="dm">${dm}</span></div></th>`;
+  }).join('');
 }
 
 function renderScheduleEditor(){
   const names = visibleAttendanceNames();
   const tbody = document.getElementById('scheduleTbody');
   document.getElementById('scheduleWeekLabel').textContent = fmtWeekLabel(scheduleWeekMonday);
+  renderScheduleHeader();
   if(names.length===0){
-    tbody.innerHTML = `<tr><td colspan="4"><div class="empty">No agents seen yet from live capture — the schedule fills in once login activity has been captured.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${WEEK_DAY_KEYS.length+1}"><div class="empty">No agents seen yet from live capture — the schedule fills in once login activity has been captured.</div></td></tr>`;
     return;
   }
   const weekData = schedule[weekKeyFor(scheduleWeekMonday.getTime())] || {};
-  const dayOptsHtml = OVERRIDE_DAY_KEYS.map(day=>`<option value="${day}">${overrideDayLabel(scheduleWeekMonday, day)}</option>`).join('');
-  const codeOptsHtml = ALL_SHIFT_OPTIONS.map(code=>`<option value="${code}">${code?SHIFT_DEFS[code].label:'Off'}</option>`).join('');
+  const todayKey = fmtDateKey(Date.now());
   tbody.innerHTML = names.map(name=>{
-    const assign = weekData[name] || {};
-    const weekdaySel = shiftOptionsHtml(name, 'weekday', WEEKDAY_SHIFT_OPTIONS, assign.weekday || '');
-    const weekendSel = shiftOptionsHtml(name, 'weekend', WEEKEND_SHIFT_OPTIONS, assign.weekend || '');
-    const overrides = assign.overrides || {};
-    const chipsHtml = Object.keys(overrides).map(day=>overrideChipHtml(name, scheduleWeekMonday, day, overrides[day])).join('');
-    return `<tr>
-      <td>${name}</td>
-      <td>${weekdaySel}</td>
-      <td>${weekendSel}</td>
-      <td>
-        <div class="chip-list" data-name="${name}">${chipsHtml}</div>
-        <div class="inline-add">
-          <select class="search-input override-day-select">${dayOptsHtml}</select>
-          <select class="search-input override-code-select">${codeOptsHtml}</select>
-          <button class="btn ghost small override-add-btn" type="button" data-name="${name}">+ Add</button>
-        </div>
-      </td>
-    </tr>`;
+    const entry = weekData[name] || {};
+    const cellsHtml = WEEK_DAY_KEYS.map(day=>{
+      const block = (day==='sat' || day==='sun') ? 'weekend' : 'weekday';
+      const code = resolveDayCode(entry, day, block);
+      const isToday = weekDayHeaderParts(scheduleWeekMonday, day).dateKey === todayKey;
+      return `<td class="day-col ${isToday?'today-col':''}">${daySelectHtml(name, day, code || '')}</td>`;
+    }).join('');
+    return `<tr><td>${name}</td>${cellsHtml}</tr>`;
   }).join('');
 
-  wireOverrideControls();
-}
-
-function wireOverrideChipRemove(chip){
-  chip.querySelector('.x').addEventListener('click', ()=>{ chip.remove(); });
-}
-
-function wireOverrideControls(){
-  const tbody = document.getElementById('scheduleTbody');
-  tbody.querySelectorAll('.chip-list .chip').forEach(wireOverrideChipRemove);
-  tbody.querySelectorAll('.override-add-btn').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const name = btn.getAttribute('data-name');
-      const cell = btn.closest('td');
-      const day = cell.querySelector('.override-day-select').value;
-      const code = cell.querySelector('.override-code-select').value;
-      const chipsEl = cell.querySelector('.chip-list');
-      const existing = chipsEl.querySelector(`.chip[data-day="${day}"]`);
-      if(existing) existing.remove();
-      chipsEl.insertAdjacentHTML('beforeend', overrideChipHtml(name, scheduleWeekMonday, day, code));
-      wireOverrideChipRemove(chipsEl.querySelector(`.chip[data-day="${day}"]`));
-    });
+  tbody.querySelectorAll('.day-select').forEach(sel=>{
+    colorizeDaySelect(sel);
+    sel.addEventListener('change', ()=> colorizeDaySelect(sel));
   });
 }
 
@@ -2013,11 +2026,16 @@ function copyLastWeekShifts(){
   const prevMonday = new Date(scheduleWeekMonday); prevMonday.setDate(prevMonday.getDate()-7);
   const prevData = schedule[weekKeyFor(prevMonday.getTime())] || {};
   document.querySelectorAll('#scheduleTbody tr').forEach(tr=>{
-    const selects = tr.querySelectorAll('.schedule-select');
+    const selects = tr.querySelectorAll('.day-select');
     if(!selects.length) return;
     const name = selects[0].getAttribute('data-name');
     const entry = prevData[name] || {};
-    selects.forEach(sel=>{ sel.value = entry[sel.getAttribute('data-block')] || ''; });
+    selects.forEach(sel=>{
+      const day = sel.getAttribute('data-day');
+      const block = (day==='sat' || day==='sun') ? 'weekend' : 'weekday';
+      sel.value = resolveDayCode(entry, day, block) || '';
+      colorizeDaySelect(sel);
+    });
   });
   showToast("Copied last week's shifts — remember to Save");
 }
@@ -2026,16 +2044,11 @@ async function saveSchedule(){
   const wk = weekKeyFor(scheduleWeekMonday.getTime());
   const weekData = { ...(schedule[wk] || {}) }; // keep entries for names not currently visible
   document.querySelectorAll('#scheduleTbody tr').forEach(tr=>{
-    const selects = tr.querySelectorAll('.schedule-select');
+    const selects = tr.querySelectorAll('.day-select');
     if(!selects.length) return;
     const name = selects[0].getAttribute('data-name');
     const entry = {};
-    selects.forEach(sel=>{ if(sel.value) entry[sel.getAttribute('data-block')] = sel.value; });
-    const overrides = {};
-    tr.querySelectorAll('.chip-list .chip').forEach(chip=>{
-      overrides[chip.getAttribute('data-day')] = chip.getAttribute('data-code') || '';
-    });
-    if(Object.keys(overrides).length) entry.overrides = overrides;
+    selects.forEach(sel=>{ entry[sel.getAttribute('data-day')] = sel.value; });
     weekData[name] = entry;
   });
   schedule = { ...schedule, [wk]: weekData };
@@ -2114,10 +2127,8 @@ function computeAttendanceRows(){
     const dayKey = WEEKDAY_KEYS[d.getDay()];
     const block = (dayKey==='sat' || dayKey==='sun') ? 'weekend' : 'weekday';
     const entry = (schedule[weekKeyFor(ts)] || {})[name] || {};
-    const overrides = entry.overrides || {};
-    const overrideDay = OVERRIDE_DAY_KEYS[(d.getDay()+6)%7]; // WEEKDAY_KEYS[getDay()] is sun-first; overrides are keyed mon-first
-    const hasOverride = Object.prototype.hasOwnProperty.call(overrides, overrideDay);
-    const code = hasOverride ? (overrides[overrideDay] || null) : (entry[block] || null);
+    const weekDay = WEEK_DAY_KEYS[(d.getDay()+6)%7]; // WEEKDAY_KEYS[getDay()] is sun-first; WEEK_DAY_KEYS is mon-first
+    const code = resolveDayCode(entry, weekDay, block);
     const shift = code ? SHIFT_DEFS[code] : null;
     let status, late = false, scheduledLabel = '—';
     if(shift){
