@@ -139,6 +139,10 @@
   .sched-table .day-head .dm{ font-size:10px; font-weight:500; color:var(--grey-3); text-transform:none; letter-spacing:0; }
   .day-select{ font-family:'Inter',sans-serif; font-size:11px; font-weight:700; padding:5px 8px; border-radius:6px; border:1px solid rgba(0,0,0,0.08); text-align:center; text-align-last:center; min-width:88px; cursor:pointer; }
 
+  .breaks-cell{ display:flex; flex-direction:column; gap:2px; }
+  .breaks-summary{ font-weight:700; color:var(--red); font-size:11px; }
+  .breaks-row{ color:var(--red); font-size:12px; }
+
   .scope-overlay{ position:fixed; inset:0; z-index:10000; background:rgba(0,7,67,0.3); display:flex; align-items:center; justify-content:center; }
   .scope-dialog{ background:#fff; border:1px solid var(--grey-2); border-radius:10px; padding:16px 18px; min-width:230px; max-width:290px; box-shadow:0 8px 32px rgba(0,7,67,0.25); }
   .scope-dialog .scope-title{ font-size:11px; font-weight:700; color:var(--grey-3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:12px; }
@@ -533,7 +537,7 @@
       <div style="overflow-x:auto;">
         <table>
           <thead>
-            <tr><th>Date</th><th>Name</th><th>First login</th><th>Long breaks (&gt;35m)</th><th>Scheduled</th><th>Status</th></tr>
+            <tr><th>Date</th><th>Name</th><th>First login</th><th>Logoffs</th><th>Long breaks (&gt;35m)</th><th>Scheduled</th><th>Status</th></tr>
           </thead>
           <tbody id="attendanceTbody"></tbody>
         </table>
@@ -1253,7 +1257,7 @@ function copyTable(){
 }
 
 function copyAttendanceTable(){
-  const headers = ['Date','Name','First login','Long breaks (>35m)','Scheduled','Status'];
+  const headers = ['Date','Name','First login','Logoffs','Long breaks (>35m)','Scheduled','Status'];
   const tbody = document.getElementById('attendanceTbody');
   const dataRows = Array.from(tbody.querySelectorAll('tr')).map(tr =>
     Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim().replace(/\n+/g,' '))
@@ -2240,6 +2244,18 @@ function computeLongBreaksByDayName(){
   return merged;
 }
 
+// Counts every genuine logoff ('out' events only — post-call wrap-up is its
+// own 'wrapup_end' direction and never counted here) per day/name.
+function countLogoffsByDayName(){
+  const counts = new Map(); // "dateKey|name" -> count
+  for(const e of liveEvents){
+    if(e.direction !== 'out' || hiddenAgents.includes(e.name)) continue;
+    const key = fmtDateKey(e.ts) + '|' + e.name;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return counts;
+}
+
 function computeAttendanceRows(){
   const firstLoginByDayName = new Map(); // "dateKey|name" -> earliest ts
   for(const e of liveEvents){
@@ -2249,6 +2265,7 @@ function computeAttendanceRows(){
     if(cur===undefined || e.ts < cur) firstLoginByDayName.set(key, e.ts);
   }
   const longBreaks = computeLongBreaksByDayName();
+  const logoffCounts = countLogoffsByDayName();
   const rows = [];
   for(const [key, ts] of firstLoginByDayName.entries()){
     const [dateKey, name] = [key.slice(0,10), key.slice(11)];
@@ -2278,7 +2295,7 @@ function computeAttendanceRows(){
     } else {
       status = 'No schedule set';
     }
-    rows.push({ dateKey, name, ts, scheduledLabel, status, late, breaks: longBreaks.get(key) || [] });
+    rows.push({ dateKey, name, ts, scheduledLabel, status, late, breaks: longBreaks.get(key) || [], logoffs: logoffCounts.get(key) || 0 });
   }
   rows.sort((a,b) => b.ts - a.ts);
   return rows;
@@ -2307,24 +2324,35 @@ function renderAttendanceTable(){
   const filtered = attendanceFilter==='All' ? rows : rows.filter(r=>r.name===attendanceFilter);
   const tbody = document.getElementById('attendanceTbody');
   if(filtered.length===0){
-    tbody.innerHTML = `<tr><td colspan="6"><div class="empty">No login history captured yet.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty">No login history captured yet.</div></td></tr>`;
     return;
   }
-  tbody.innerHTML = filtered.map(r=>{
-    const breaksLabel = r.breaks.length
-      ? r.breaks.map(b=>`${fmtTime(b.outTs)}–${fmtTime(b.inTs)} (${b.minutes}m)`).join(', ')
-      : '—';
-    return `
+  tbody.innerHTML = filtered.map(r=>`
     <tr>
       <td>${fmtDateLabel(r.dateKey)}</td>
       <td>${r.name}</td>
       <td>${fmtTime(r.ts)}</td>
-      <td style="color:${r.breaks.length?'var(--red)':'var(--grey-3)'};">${breaksLabel}</td>
+      <td>${r.logoffs || '—'}</td>
+      <td>${breaksCellHtml(r.breaks)}</td>
       <td>${r.scheduledLabel}</td>
       <td style="color:${r.late?'var(--red)':(r.status==='On time'?'var(--green)':'var(--grey-3)')};">${r.status}</td>
     </tr>
-  `;
-  }).join('');
+  `).join('');
+}
+
+// Multiple long breaks used to run together as one comma-separated line,
+// making it hard to tell at a glance whether there were 1 or several. Now
+// each break gets its own line, with a bold count+total summary on top once
+// there's more than one, so "several long breaks" is visible without reading
+// every timestamp.
+function breaksCellHtml(breaks){
+  if(!breaks.length) return `<span style="color:var(--grey-3);">—</span>`;
+  const totalMin = breaks.reduce((s,b)=>s+b.minutes, 0);
+  const summary = breaks.length > 1
+    ? `<div class="breaks-summary">${breaks.length} long breaks · ${totalMin}m total</div>`
+    : '';
+  const rows = breaks.map(b=>`<div class="breaks-row">${fmtTime(b.outTs)}–${fmtTime(b.inTs)} (${b.minutes}m)</div>`).join('');
+  return `<div class="breaks-cell">${summary}${rows}</div>`;
 }
 
 function fmtWait(seconds){
