@@ -138,6 +138,16 @@
   .sched-table .day-head .dow{ font-size:11px; }
   .sched-table .day-head .dm{ font-size:10px; font-weight:500; color:var(--grey-3); text-transform:none; letter-spacing:0; }
   .day-select{ font-family:'Inter',sans-serif; font-size:11px; font-weight:700; padding:5px 8px; border-radius:6px; border:1px solid rgba(0,0,0,0.08); text-align:center; text-align-last:center; min-width:88px; cursor:pointer; }
+
+  .scope-overlay{ position:fixed; inset:0; z-index:10000; background:rgba(0,7,67,0.3); display:flex; align-items:center; justify-content:center; }
+  .scope-dialog{ background:#fff; border:1px solid var(--grey-2); border-radius:10px; padding:16px 18px; min-width:230px; max-width:290px; box-shadow:0 8px 32px rgba(0,7,67,0.25); }
+  .scope-dialog .scope-title{ font-size:11px; font-weight:700; color:var(--grey-3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:12px; }
+  .scope-dialog .scope-btns{ display:flex; flex-direction:column; gap:6px; }
+  .scope-dialog .scope-btn{ font-family:'Inter',sans-serif; font-size:12px; font-weight:600; padding:9px 14px; border-radius:6px; cursor:pointer; text-align:left; border:1px solid var(--grey-2); background:none; color:var(--navy); }
+  .scope-dialog .scope-btn:hover{ background:var(--lightblue); }
+  .scope-dialog .scope-btn.primary{ background:var(--navy); color:var(--white); border-color:var(--navy); }
+  .scope-dialog .scope-btn.primary:hover{ background:var(--navy-hover); }
+  .scope-dialog .scope-note{ margin-top:10px; padding-top:10px; border-top:1px solid var(--grey-1); font-size:10px; color:var(--grey-3); }
   .search-input{ font-family:'Inter',sans-serif; font-weight:500; font-size:13px; color:var(--navy); border:1px solid var(--grey-2); border-radius:6px; padding:8px 10px; background:#fff; min-width:160px; }
   .search-input::placeholder{ color:var(--grey-3); }
   .btn.nav{ padding:7px 10px; font-size:13px; line-height:1; }
@@ -1835,6 +1845,10 @@ const SHIFT_DEFS = {
   E:  { label: 'Evening · 17:00–06:00', start: '17:00', queue: 'KØ Vakt',                block: 'weekday' },
   H1: { label: 'H1 · 07:00–17:00',      start: '07:00', queue: 'KØ Vakt',                block: 'weekend' },
   H2: { label: 'H2 · 17:00–06:00',      start: '17:00', queue: 'KØ Vakt',                block: 'weekend' },
+  // Not a working shift — a compensatory day off, auto-added the week after a
+  // weekend (H1/H2) shift. No start/queue: computeAttendanceRows special-cases
+  // it instead of treating it like a real shift with a start time.
+  SO: { label: 'SO · Day off' },
 };
 const ALL_SHIFT_OPTIONS = ['', ...Object.keys(SHIFT_DEFS)];
 const WEEK_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -1848,6 +1862,7 @@ const SHIFT_COLORS = {
   E:  { bg: '#ffb74d', fg: '#3d2000' },
   H1: { bg: '#4dd0e1', fg: '#00363d' },
   H2: { bg: '#f48fb1', fg: '#3d001a' },
+  SO: { bg: '#ffcdd2', fg: '#4a0010' },
 };
 const OFF_COLOR = { bg: '#EEF2F7', fg: '#6B7690' }; // var(--grey-1)/var(--grey-3)
 
@@ -1978,6 +1993,120 @@ function colorizeDaySelect(sel){
   sel.style.color = c.fg;
 }
 
+// Fills entry with an explicit code for every day (using resolveDayCode's
+// legacy fallback for anything not already per-day) so a later targeted
+// write — e.g. one auto-SO day — can't accidentally blank out days that were
+// only implied by an old weekday/weekend pattern.
+function upgradeToPerDayEntry(entry){
+  const out = {};
+  WEEK_DAY_KEYS.forEach(day=>{
+    const block = (day==='sat' || day==='sun') ? 'weekend' : 'weekday';
+    out[day] = resolveDayCode(entry, day, block) || '';
+  });
+  return out;
+}
+
+// Small confirm popover (not a native browser dialog) offering a primary
+// "apply to the rest of the week" action and a secondary "just this one"
+// action. Dismissing by clicking outside is treated the same as choosing
+// the secondary action — the single-cell change already happened.
+function showScopeDialog({title, primaryLabel, onPrimary, secondaryLabel, onSecondary, note}){
+  const overlay = document.createElement('div');
+  overlay.className = 'scope-overlay';
+  const dialog = document.createElement('div');
+  dialog.className = 'scope-dialog';
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'scope-title';
+  titleEl.textContent = title;
+  dialog.appendChild(titleEl);
+
+  const btnsEl = document.createElement('div');
+  btnsEl.className = 'scope-btns';
+  const mkBtn = (label, primary, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'scope-btn' + (primary ? ' primary' : '');
+    b.textContent = label;
+    b.addEventListener('click', ()=>{ overlay.remove(); onClick(); });
+    return b;
+  };
+  const runSecondary = onSecondary || (()=>{});
+  btnsEl.appendChild(mkBtn(primaryLabel, true, onPrimary));
+  btnsEl.appendChild(mkBtn(secondaryLabel, false, runSecondary));
+  dialog.appendChild(btnsEl);
+
+  if(note){
+    const noteEl = document.createElement('div');
+    noteEl.className = 'scope-note';
+    noteEl.textContent = note;
+    dialog.appendChild(noteEl);
+  }
+
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  overlay.addEventListener('mousedown', e=>{
+    if(e.target === overlay){ overlay.remove(); runSecondary(); }
+  });
+}
+
+function applyCodeToDays(name, days, code){
+  days.forEach(day=>{
+    const sel = document.querySelector(`.day-select[data-name="${name}"][data-day="${day}"]`);
+    if(sel){ sel.value = code; colorizeDaySelect(sel); }
+  });
+}
+
+// A weekend shift earns a compensatory day off (SO) the week after: H1 earns
+// Monday, H2 (the longer/overnight one) earns Monday+Tuesday. Mutates the
+// in-memory `schedule` object directly — like every other pending edit here,
+// it isn't persisted until "Save schedule" is clicked. Never overwrites a day
+// that's already something other than blank/SO, matching the source rule
+// this was ported from (the other Munu planner, index.html).
+function queueAutoSO(name, soDays){
+  const nextWk = weekKeyFor(scheduleWeekMonday.getTime() + 7*24*3600*1000);
+  if(!schedule[nextWk]) schedule[nextWk] = {};
+  const entry = upgradeToPerDayEntry(schedule[nextWk][name] || {});
+  soDays.forEach(day=>{
+    if(!entry[day] || entry[day] === 'SO') entry[day] = 'SO';
+  });
+  schedule[nextWk][name] = entry;
+}
+
+function capitalize(s){ return s[0].toUpperCase() + s.slice(1); }
+
+function onDayCellChanged(sel){
+  colorizeDaySelect(sel);
+  const name = sel.getAttribute('data-name');
+  const dayKey = sel.getAttribute('data-day');
+  const code = sel.value;
+  const block = (dayKey==='sat' || dayKey==='sun') ? 'weekend' : 'weekday';
+  const scopeDays = block==='weekend' ? ['sat','sun'] : ['mon','tue','wed','thu','fri'];
+  const scopeLabel = block==='weekend' ? 'Sat–Sun (whole weekend)' : 'Mon–Fri (whole week)';
+  const soApplicable = block==='weekend' && (code==='H1' || code==='H2');
+  const soDays = code==='H2' ? ['mon','tue'] : ['mon'];
+  const soNote = soApplicable
+    ? `Auto-SO: ${name.split(' ')[0]} → ${soDays.map(capitalize).join(' + ')} (next week)`
+    : null;
+
+  showScopeDialog({
+    title: code ? `Apply ${code} to…` : 'Clear shift…',
+    primaryLabel: scopeLabel,
+    onPrimary: () => {
+      applyCodeToDays(name, scopeDays.filter(d => d !== dayKey), code);
+      if(soApplicable) queueAutoSO(name, soDays);
+      showToast(soApplicable
+        ? `Applied to ${scopeLabel.split(' (')[0]} — SO queued for next week too. Remember to Save.`
+        : `Applied to ${scopeLabel.split(' (')[0]}. Remember to Save.`);
+    },
+    secondaryLabel: `Just ${capitalize(dayKey)}`,
+    onSecondary: () => {
+      if(soApplicable){ queueAutoSO(name, soDays); showToast('SO queued for next week. Remember to Save.'); }
+    },
+    note: soNote,
+  });
+}
+
 function daySelectHtml(name, dayKey, current){
   return `<select class="day-select" data-name="${name}" data-day="${dayKey}">` +
     ALL_SHIFT_OPTIONS.map(code=>`<option value="${code}" ${current===code?'selected':''}>${code || '—'}</option>`).join('') +
@@ -2018,7 +2147,7 @@ function renderScheduleEditor(){
 
   tbody.querySelectorAll('.day-select').forEach(sel=>{
     colorizeDaySelect(sel);
-    sel.addEventListener('change', ()=> colorizeDaySelect(sel));
+    sel.addEventListener('change', ()=> onDayCellChanged(sel));
   });
 }
 
@@ -2131,7 +2260,11 @@ function computeAttendanceRows(){
     const code = resolveDayCode(entry, weekDay, block);
     const shift = code ? SHIFT_DEFS[code] : null;
     let status, late = false, scheduledLabel = '—';
-    if(shift){
+    if(code === 'SO'){
+      scheduledLabel = shift.label;
+      status = 'Scheduled off — logged in anyway';
+      late = true; // worth flagging red: they were meant to have this day off
+    } else if(shift){
       scheduledLabel = shift.label;
       const [sh, sm] = shift.start.split(':').map(Number);
       const scheduledTs = new Date(d.getFullYear(), d.getMonth(), d.getDate(), sh, sm).getTime();
