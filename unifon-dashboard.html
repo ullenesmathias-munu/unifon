@@ -533,6 +533,12 @@
         <select class="search-input" id="hideAgentSelect"></select>
         <button class="btn ghost small" id="hideAgentBtn" type="button">Hide from attendance</button>
       </div>
+      <div class="livechips" id="attendanceDateChips"></div>
+      <div class="inline-add" id="attendanceCustomRange" style="display:none; margin-bottom:14px;">
+        <input type="date" class="search-input" id="attendanceFromInput">
+        <span style="font-size:12px; color:var(--grey-3);">to</span>
+        <input type="date" class="search-input" id="attendanceToInput">
+      </div>
       <div class="livechips" id="attendanceChips"></div>
       <div style="overflow-x:auto;">
         <table>
@@ -1510,6 +1516,8 @@ document.getElementById('schedulePrevWeekBtn').addEventListener('click', ()=>shi
 document.getElementById('scheduleNextWeekBtn').addEventListener('click', ()=>shiftScheduleWeek(7));
 document.getElementById('scheduleThisWeekBtn').addEventListener('click', ()=>{ scheduleWeekMonday = mondayOf(Date.now()); renderScheduleEditor(); });
 document.getElementById('hideAgentBtn').addEventListener('click', hideSelectedAgent);
+document.getElementById('attendanceFromInput').addEventListener('change', e=>{ attendanceCustomFrom = e.target.value; renderAttendanceTable(); });
+document.getElementById('attendanceToInput').addEventListener('change', e=>{ attendanceCustomTo = e.target.value; renderAttendanceTable(); });
 
 const drop = document.getElementById('drop');
 const fileInput = document.getElementById('fileInput');
@@ -1857,6 +1865,17 @@ const SHIFT_DEFS = {
 const ALL_SHIFT_OPTIONS = ['', ...Object.keys(SHIFT_DEFS)];
 const WEEK_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
+// Recurring exceptions to a shift's normal start time, for lateness purposes
+// only (the shift's own label/hours shown elsewhere are unaffected). E.g. the
+// Wednesday 09:00–10:00 team meeting means D3 (09:00 start) isn't expected on
+// the queue until after it — so "late" isn't flagged until 10:10 that day.
+const LATE_GRACE_RULES = [
+  { code: 'D3', dayOfWeek: 3, until: '10:10', reason: 'Wednesday 09:00–10:00 team meeting' }, // 3 = Wed
+];
+function findLateGrace(code, d){
+  return LATE_GRACE_RULES.find(r => r.code === code && r.dayOfWeek === d.getDay()) || null;
+}
+
 // Pill colors per shift code — matches the palette used in the other Munu
 // planner dashboard (index.html) so shift codes read the same across tools.
 const SHIFT_COLORS = {
@@ -1879,6 +1898,17 @@ const OFF_COLOR = { bg: '#EEF2F7', fg: '#6B7690' }; // var(--grey-1)/var(--grey-
 let schedule = {};
 let hiddenAgents = []; // names hidden from schedule + login history, shared via hidden-agents.json
 let attendanceFilter = 'All';
+let attendanceDateFilter = 'all'; // 'all' | 'today' | 'week' | 'prevWeek' | 'month' | 'custom'
+let attendanceCustomFrom = '';
+let attendanceCustomTo = '';
+const ATTENDANCE_DATE_FILTERS = [
+  { key: 'all',      label: 'All time' },
+  { key: 'today',     label: 'Today' },
+  { key: 'week',      label: 'This week' },
+  { key: 'prevWeek',  label: 'Previous week' },
+  { key: 'month',     label: 'This month' },
+  { key: 'custom',    label: 'Custom range' },
+];
 
 function mondayOf(ts){
   const d = new Date(ts);
@@ -2283,14 +2313,16 @@ function computeAttendanceRows(){
       late = true; // worth flagging red: they were meant to have this day off
     } else if(shift){
       scheduledLabel = shift.label;
-      const [sh, sm] = shift.start.split(':').map(Number);
+      const grace = findLateGrace(code, d);
+      const [sh, sm] = (grace ? grace.until : shift.start).split(':').map(Number);
       const scheduledTs = new Date(d.getFullYear(), d.getMonth(), d.getDate(), sh, sm).getTime();
       const lateMin = Math.round((ts - scheduledTs)/60000);
+      const graceNote = grace ? ` (meeting grace to ${grace.until})` : '';
       if(lateMin > 0){
         late = true;
-        status = `Late by ${lateMin}m`;
+        status = `Late by ${lateMin}m${graceNote}`;
       } else {
-        status = 'On time';
+        status = `On time${graceNote}`;
       }
     } else {
       status = 'No schedule set';
@@ -2307,6 +2339,48 @@ function renderAttendance(){
   renderAttendanceTable();
 }
 
+// Returns the inclusive {from, to} dateKey bounds for the current quick
+// filter, or null for 'all' (no restriction). dateKeys are zero-padded
+// YYYY-MM-DD, so plain string comparison against them works correctly.
+function attendanceDateRangeKeys(){
+  const now = Date.now();
+  if(attendanceDateFilter === 'today'){
+    const k = fmtDateKey(now);
+    return { from: k, to: k };
+  }
+  if(attendanceDateFilter === 'week'){
+    const mon = mondayOf(now);
+    const sun = new Date(mon); sun.setDate(sun.getDate() + 6);
+    return { from: fmtDateKey(mon.getTime()), to: fmtDateKey(sun.getTime()) };
+  }
+  if(attendanceDateFilter === 'prevWeek'){
+    const mon = mondayOf(now); mon.setDate(mon.getDate() - 7);
+    const sun = new Date(mon); sun.setDate(sun.getDate() + 6);
+    return { from: fmtDateKey(mon.getTime()), to: fmtDateKey(sun.getTime()) };
+  }
+  if(attendanceDateFilter === 'month'){
+    const d = new Date(now);
+    const first = new Date(d.getFullYear(), d.getMonth(), 1);
+    const last = new Date(d.getFullYear(), d.getMonth()+1, 0);
+    return { from: fmtDateKey(first.getTime()), to: fmtDateKey(last.getTime()) };
+  }
+  if(attendanceDateFilter === 'custom'){
+    return { from: attendanceCustomFrom || '0000-01-01', to: attendanceCustomTo || '9999-12-31' };
+  }
+  return null; // 'all'
+}
+
+function renderAttendanceDateChips(){
+  const el = document.getElementById('attendanceDateChips');
+  el.innerHTML = ATTENDANCE_DATE_FILTERS.map(o=>
+    `<span class="livechip ${attendanceDateFilter===o.key?'active':''}" data-key="${o.key}">${o.label}</span>`
+  ).join('');
+  el.querySelectorAll('.livechip').forEach(c=>{
+    c.addEventListener('click', ()=>{ attendanceDateFilter = c.getAttribute('data-key'); renderAttendance(); });
+  });
+  document.getElementById('attendanceCustomRange').style.display = attendanceDateFilter==='custom' ? 'flex' : 'none';
+}
+
 // Only the login-history table — safe to call on every poll without
 // clobbering whatever the user is currently typing into the schedule inputs.
 function renderAttendanceTable(){
@@ -2320,11 +2394,18 @@ function renderAttendanceTable(){
   chipsEl.querySelectorAll('.livechip').forEach(c=>{
     c.addEventListener('click', ()=>{ attendanceFilter = c.getAttribute('data-name'); renderAttendance(); });
   });
+  renderAttendanceDateChips();
 
-  const filtered = attendanceFilter==='All' ? rows : rows.filter(r=>r.name===attendanceFilter);
+  const dateRange = attendanceDateRangeKeys();
+  const filtered = rows.filter(r=>{
+    if(attendanceFilter!=='All' && r.name!==attendanceFilter) return false;
+    if(dateRange && (r.dateKey < dateRange.from || r.dateKey > dateRange.to)) return false;
+    return true;
+  });
   const tbody = document.getElementById('attendanceTbody');
   if(filtered.length===0){
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty">No login history captured yet.</div></td></tr>`;
+    const msg = rows.length===0 ? 'No login history captured yet.' : 'No login history matches the current filters.';
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty">${msg}</div></td></tr>`;
     return;
   }
   tbody.innerHTML = filtered.map(r=>`
@@ -2600,6 +2681,11 @@ function renderLive(){
         </div>
       `;
     }
+    // Only show "off Xm" when the gap it measures fell within the same
+    // calendar day — otherwise it's just "logged off at end of shift,
+    // logged back on the next working day", not a real absence worth flagging.
+    const sameDayOff = e.direction==='in' && e.offMinutes!=null
+      && fmtDateKey(e.ts - e.offMinutes*60000) === fmtDateKey(e.ts);
     return `
       <div class="liverow">
         <span class="dot ${e.direction}"></span>
@@ -2607,7 +2693,7 @@ function renderLive(){
         <span class="who">${e.name}</span>
         <span>${e.direction==='in'?'→':'←'}</span>
         <span class="q">${e.queue||''}</span>
-        ${e.direction==='in' && e.offMinutes!=null ? `<span class="off">off ${e.offMinutes}m</span>` : ''}
+        ${sameDayOff ? `<span class="off">off ${e.offMinutes}m</span>` : ''}
       </div>
     `;
   }).join('');
