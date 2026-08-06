@@ -3014,8 +3014,6 @@ function renderTVStats(){
   const rows = ALL_RECORDS.filter(r => r.periodType+'||'+r.periodLabel === period.key);
   const eligible = rows.filter(r => r.attempts >= 5 && r.answerRate != null);
   const teamAvg = eligible.length ? eligible.reduce((s,r) => s + r.answerRate, 0) / eligible.length : null;
-  const ranked = [...eligible].sort((a,b) => b.answerRate - a.answerRate);
-  const {flags} = computeFlags(rows, 5, 10, 20, 75);
   const weeklyData = buildWeeklyRateData();
   const sectionTitle = period.granularity === 'Weekly' ? 'Last week' : 'Recent period';
   el.innerHTML = `
@@ -3027,23 +3025,6 @@ function renderTVStats(){
     ${weeklyData.length >= 2 ? `
       <div class="tv-chart-label">Weekly trend</div>
       ${renderSVGBars(weeklyData)}
-      <div class="tv-col-divider"></div>
-    ` : ''}
-    ${ranked.slice(0, 4).map((r, i) => `
-      <div class="tv-rank-row">
-        <span class="tv-rank-num">${i+1}</span>
-        <span class="tv-rank-name">${r.name}</span>
-        <span class="tv-rank-rate">${r.answerRate.toFixed(0)}%</span>
-      </div>
-    `).join('')}
-    ${flags.length > 0 ? `
-      <div class="tv-flags-label">Needs a conversation</div>
-      ${flags.map(f => `
-        <div class="tv-flag-row">
-          <span class="fdot" style="background:${f.level==='red'?'#CF2141':'#F6C34A'}"></span>
-          <span>${f.name}</span>
-        </div>
-      `).join('')}
     ` : ''}
   `;
 }
