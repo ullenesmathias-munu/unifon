@@ -1298,18 +1298,32 @@ function openAttendanceReport(){
     { label: 'Logoffs', value: totalLogoffs },
   ];
 
-  const rowsHtml = filtered.map(r => `
+  // One row per agent — a summary of the range, not a day-by-day log.
+  const byAgent = new Map();
+  for(const r of filtered){
+    if(!byAgent.has(r.name)) byAgent.set(r.name, { name: r.name, shifts:0, presenceSum:0, presenceCount:0, late:0, longBreaks:0, logoffs:0 });
+    const a = byAgent.get(r.name);
+    a.shifts += 1;
+    if(r.presencePercent!=null){ a.presenceSum += r.presencePercent; a.presenceCount += 1; }
+    if(r.late) a.late += 1;
+    a.longBreaks += r.breaks.length;
+    a.logoffs += r.logoffs || 0;
+  }
+  const agentRows = Array.from(byAgent.values()).sort((a,b) => a.name.localeCompare(b.name));
+
+  const rowsHtml = agentRows.map(a => {
+    const avg = a.presenceCount ? Math.round(a.presenceSum / a.presenceCount) : null;
+    return `
     <tr>
-      <td>${fmtDateLabel(r.dateKey)}</td>
-      <td>${r.name}</td>
-      <td>${fmtTime(r.ts)}</td>
-      <td>${r.logoffs || '—'}</td>
-      <td>${r.breaks.length ? r.breaks.map(b=>`${fmtTime(b.outTs)}–${fmtTime(b.inTs)} (${b.minutes}m)`).join('<br>') : '—'}</td>
-      <td>${r.scheduledLabel}</td>
-      <td class="${r.presencePercent!=null && r.presencePercent<70 ? 'bad' : ''}">${r.presencePercent!=null ? r.presencePercent+'%' : '—'}</td>
-      <td class="${r.late ? 'bad' : (r.status==='On time' ? 'good' : '')}">${r.status}</td>
+      <td>${a.name}</td>
+      <td>${a.shifts}</td>
+      <td class="${avg!=null && avg<70 ? 'bad' : ''}">${avg!=null ? avg+'%' : '—'}</td>
+      <td class="${a.late>0 ? 'bad' : ''}">${a.late}</td>
+      <td class="${a.longBreaks>0 ? 'bad' : ''}">${a.longBreaks}</td>
+      <td>${a.logoffs || '—'}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   const generatedAt = new Date().toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' });
 
@@ -1362,7 +1376,7 @@ function openAttendanceReport(){
     ${summaryTiles.map(t => `<div class="tile"><div class="v${t.warn?' warn':''}">${t.value}</div><div class="l">${t.label}</div></div>`).join('')}
   </div>
   <table>
-    <thead><tr><th>Date</th><th>Name</th><th>First login</th><th>Logoffs</th><th>Long breaks (&gt;35m)</th><th>Scheduled</th><th>On queue</th><th>Status</th></tr></thead>
+    <thead><tr><th>Agent</th><th>Shifts</th><th>Avg on queue</th><th>Late</th><th>Long breaks (&gt;35m)</th><th>Logoffs</th></tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>
   <div class="foot">${filtered.length} shift${filtered.length===1?'':'s'} across ${distinctAgents} agent${distinctAgents===1?'':'s'}.</div>
