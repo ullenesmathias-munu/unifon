@@ -151,6 +151,12 @@ let currentStatus = null;
 // presence indicator, not a call log.
 let currentCalls = null;
 
+// Per-agent answered-call totals for "this week so far" — served at
+// /agent-stats.json. Comes straight from Unifon's own AgentReport query (the
+// same report the agents-report .xlsx export is generated from), so it's
+// Unifon's authoritative count, not something inferred from state polling.
+let currentAgentStats = null;
+
 function saveEvents() {
   const cutoff = Date.now() - 30 * 24 * 3600 * 1000; // keep 30 days
   events = events.filter(e => e.ts >= cutoff);
@@ -341,6 +347,57 @@ async function pollCalls() {
 setInterval(pollCalls, calls_poll_seconds * 1000);
 pollCalls();
 
+// Monday 00:00 local time of the current week.
+function mondayOf(ts) {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay(); // 0=Sun..6=Sat
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  return d;
+}
+
+async function pollAgentStats() {
+  try {
+    const tok = await getToken();
+    const from = mondayOf(Date.now()).toISOString();
+    const to = new Date().toISOString();
+    const query = `{
+      AgentReport(date_from: "${from}", date_to: "${to}") {
+        user_name
+        queue_name
+        queue_calls_answer
+      }
+    }`;
+    const res = await fetch('https://graphql.unifon.no/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+      body: JSON.stringify({ query })
+    });
+    if (!res.ok) {
+      console.error('agent-report poll failed:', res.status, await res.text().catch(() => ''));
+      return;
+    }
+    const { data } = await res.json();
+    const totals = new Map(); // name -> answered count, summed across queues
+    for (const r of (data.AgentReport || [])) {
+      if (isExcludedQueue(r.queue_name)) continue;
+      totals.set(r.user_name, (totals.get(r.user_name) || 0) + (r.queue_calls_answer || 0));
+    }
+    currentAgentStats = {
+      ts: Date.now(),
+      weekStart: from,
+      agents: Array.from(totals, ([name, count]) => ({ name, count })),
+    };
+  } catch (err) {
+    console.error('agent-report poll error:', err.message);
+  }
+}
+
+// This is a running weekly total, not something that needs 4-second freshness
+// like the live call state above, so it polls on the same cadence as the main
+// queue/summary poll.
+setInterval(pollAgentStats, poll_seconds * 1000);
+
 const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -361,6 +418,9 @@ const server = http.createServer((req, res) => {
   } else if (req.url.startsWith('/calls.json')) {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(currentCalls || { ts: Date.now(), agents: [], calls: [] }));
+  } else if (req.url.startsWith('/agent-stats.json')) {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(currentAgentStats || { ts: Date.now(), agents: [] }));
   } else if (req.url.startsWith('/debug.json')) {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(lastRawResponse, null, 2));

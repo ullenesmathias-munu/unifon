@@ -267,18 +267,6 @@
   .tv-agent-row .adot.busy{ background:var(--yellow); }
   .tv-agent-row .on-call-tag{ margin-left:auto; font-size:11px; opacity:0.5; }
 
-  .tv-team-rate{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:64px; line-height:1; }
-  .tv-team-label{ font-size:11px; opacity:0.4; text-transform:uppercase; letter-spacing:.04em; margin-top:4px; margin-bottom:20px; }
-  .tv-rank-row{
-    display:flex; align-items:center; gap:12px; padding:7px 0; font-size:17px;
-    border-bottom:1px solid rgba(255,255,255,0.06);
-  }
-  .tv-rank-num{ font-size:11px; opacity:0.3; width:18px; text-align:right; flex-shrink:0; }
-  .tv-rank-name{ flex:1; font-weight:500; }
-  .tv-rank-rate{ font-family:'Fira Sans',sans-serif; font-weight:700; font-size:19px; }
-  .tv-flags-label{ margin-top:16px; margin-bottom:8px; font-size:10px; text-transform:uppercase; letter-spacing:.05em; opacity:0.35; }
-  .tv-flag-row{ display:flex; align-items:center; gap:8px; padding:6px 0; font-size:15px; }
-  .tv-flag-row .fdot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
   .tv-no-data{ opacity:0.25; font-size:15px; padding-top:10px; }
   .tv-no-live-queues{ opacity:0.25; font-size:14px; }
   .tv-col-divider{ height:1px; background:rgba(255,255,255,0.08); margin:16px 0; }
@@ -325,8 +313,8 @@
     </div>
     <div class="tv-col">
       <div id="tvStatsContent">
-        <div class="tv-section-label">Last week</div>
-        <div class="tv-no-data">Upload a Unifon report to see performance data</div>
+        <div class="tv-section-label">Most calls answered<span class="tv-period-tag">this week</span></div>
+        <div class="tv-no-data">Waiting for local capture...</div>
       </div>
     </div>
   </div>
@@ -543,7 +531,7 @@
       <div style="overflow-x:auto;">
         <table>
           <thead>
-            <tr><th>Date</th><th>Name</th><th>First login</th><th>Logoffs</th><th>Long breaks (&gt;35m)</th><th>Scheduled</th><th>Status</th></tr>
+            <tr><th>Date</th><th>Name</th><th>First login</th><th>Logoffs</th><th>Long breaks (&gt;35m)</th><th>Scheduled</th><th>On queue</th><th>Status</th></tr>
           </thead>
           <tbody id="attendanceTbody"></tbody>
         </table>
@@ -1263,7 +1251,7 @@ function copyTable(){
 }
 
 function copyAttendanceTable(){
-  const headers = ['Date','Name','First login','Logoffs','Long breaks (>35m)','Scheduled','Status'];
+  const headers = ['Date','Name','First login','Logoffs','Long breaks (>35m)','Scheduled','On queue','Status'];
   const tbody = document.getElementById('attendanceTbody');
   const dataRows = Array.from(tbody.querySelectorAll('tr')).map(tr =>
     Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim().replace(/\n+/g,' '))
@@ -1841,6 +1829,7 @@ const SUPPRESSED_QUEUES = /vakt/i;
 let liveEvents    = [];
 let liveStatus    = null;
 let liveCalls     = null; // { ts, agents:[{name,queue,onCall}], calls:[{id,queue,answered,seconds}] } from /calls.json
+let liveAgentStats = null; // { ts, weekStart, agents:[{name,count}] } from /agent-stats.json — Unifon's own AgentReport totals
 let liveFilter    = 'All';
 const waitTimeSamples = []; // {ts, avgWait} — accumulated across polls today, for sparkline
 let liveConnected = false;
@@ -1851,12 +1840,12 @@ const WEEKDAY_KEYS = ['sun','mon','tue','wed','thu','fri','sat'];
 // Fixed shift rotation: weekday shifts run on KØ Innenfor åpningstid (day) or
 // KØ Vakt (evening); weekend shifts always run on KØ Vakt.
 const SHIFT_DEFS = {
-  D1: { label: 'D1 · 07:00–15:00',      start: '07:00', queue: 'KØ Innenfor åpningstid', block: 'weekday' },
-  D2: { label: 'D2 · 08:00–16:00',      start: '08:00', queue: 'KØ Innenfor åpningstid', block: 'weekday' },
-  D3: { label: 'D3 · 09:00–17:00',      start: '09:00', queue: 'KØ Innenfor åpningstid', block: 'weekday' },
-  E:  { label: 'Evening · 17:00–06:00', start: '17:00', queue: 'KØ Vakt',                block: 'weekday' },
-  H1: { label: 'H1 · 07:00–17:00',      start: '07:00', queue: 'KØ Vakt',                block: 'weekend' },
-  H2: { label: 'H2 · 17:00–06:00',      start: '17:00', queue: 'KØ Vakt',                block: 'weekend' },
+  D1: { label: 'D1 · 07:00–15:00',      start: '07:00', end: '15:00', queue: 'KØ Innenfor åpningstid', block: 'weekday' },
+  D2: { label: 'D2 · 08:00–16:00',      start: '08:00', end: '16:00', queue: 'KØ Innenfor åpningstid', block: 'weekday' },
+  D3: { label: 'D3 · 09:00–17:00',      start: '09:00', end: '17:00', queue: 'KØ Innenfor åpningstid', block: 'weekday' },
+  E:  { label: 'Evening · 17:00–06:00', start: '17:00', end: '06:00', queue: 'KØ Vakt',                block: 'weekday' },
+  H1: { label: 'H1 · 07:00–17:00',      start: '07:00', end: '17:00', queue: 'KØ Vakt',                block: 'weekend' },
+  H2: { label: 'H2 · 17:00–06:00',      start: '17:00', end: '06:00', queue: 'KØ Vakt',                block: 'weekend' },
   // Not a working shift — a compensatory day off, auto-added the week after a
   // weekend (H1/H2) shift. No start/queue: computeAttendanceRows special-cases
   // it instead of treating it like a real shift with a start time.
@@ -2286,6 +2275,32 @@ function countLogoffsByDayName(){
   return counts;
 }
 
+// Total time `name` was logged in on ANY queue, overlapping [rangeStart, rangeEnd]
+// (all ms epoch). Merges overlapping queue sessions with a counter so being on
+// two queues at once isn't double-counted, and treats a session with no closing
+// 'out' yet as still open through rangeEnd (covers "still logged in right now").
+function computeLoggedInMs(name, dateKey, rangeStart, rangeEnd){
+  const dayEvents = liveEvents
+    .filter(e => e.name===name && fmtDateKey(e.ts)===dateKey && (e.direction==='in' || e.direction==='out'))
+    .sort((a,b)=>a.ts-b.ts);
+  const clip = (a,b) => Math.max(0, Math.min(b, rangeEnd) - Math.max(a, rangeStart));
+  let activeQueues = 0, sessionStart = null, totalMs = 0;
+  for(const e of dayEvents){
+    if(e.direction==='in'){
+      if(activeQueues===0) sessionStart = e.ts;
+      activeQueues++;
+    } else {
+      activeQueues = Math.max(0, activeQueues-1);
+      if(activeQueues===0 && sessionStart!=null){
+        totalMs += clip(sessionStart, e.ts);
+        sessionStart = null;
+      }
+    }
+  }
+  if(activeQueues>0 && sessionStart!=null) totalMs += clip(sessionStart, rangeEnd);
+  return totalMs;
+}
+
 function computeAttendanceRows(){
   const firstLoginByDayName = new Map(); // "dateKey|name" -> earliest ts
   for(const e of liveEvents){
@@ -2306,7 +2321,7 @@ function computeAttendanceRows(){
     const weekDay = WEEK_DAY_KEYS[(d.getDay()+6)%7]; // WEEKDAY_KEYS[getDay()] is sun-first; WEEK_DAY_KEYS is mon-first
     const code = resolveDayCode(entry, weekDay, block);
     const shift = code ? SHIFT_DEFS[code] : null;
-    let status, late = false, scheduledLabel = '—';
+    let status, late = false, scheduledLabel = '—', presencePercent = null;
     if(code === 'SO'){
       scheduledLabel = shift.label;
       status = 'Scheduled off — logged in anyway';
@@ -2324,10 +2339,21 @@ function computeAttendanceRows(){
       } else {
         status = `On time${graceNote}`;
       }
+
+      // % of the scheduled shift (up to now, for a shift still in progress)
+      // actually spent logged in on any queue.
+      const [eh, em] = shift.end.split(':').map(Number);
+      let shiftEndTs = new Date(d.getFullYear(), d.getMonth(), d.getDate(), eh, em).getTime();
+      if(shiftEndTs <= scheduledTs) shiftEndTs += 24*3600000; // overnight shift (e.g. 17:00–06:00)
+      const rangeEnd = Math.min(Date.now(), shiftEndTs);
+      if(rangeEnd > scheduledTs){
+        const loggedMs = computeLoggedInMs(name, dateKey, scheduledTs, rangeEnd);
+        presencePercent = Math.round(loggedMs / (rangeEnd - scheduledTs) * 100);
+      }
     } else {
       status = 'No schedule set';
     }
-    rows.push({ dateKey, name, ts, scheduledLabel, status, late, breaks: longBreaks.get(key) || [], logoffs: logoffCounts.get(key) || 0 });
+    rows.push({ dateKey, name, ts, scheduledLabel, status, late, presencePercent, breaks: longBreaks.get(key) || [], logoffs: logoffCounts.get(key) || 0 });
   }
   rows.sort((a,b) => b.ts - a.ts);
   return rows;
@@ -2405,7 +2431,7 @@ function renderAttendanceTable(){
   const tbody = document.getElementById('attendanceTbody');
   if(filtered.length===0){
     const msg = rows.length===0 ? 'No login history captured yet.' : 'No login history matches the current filters.';
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty">${msg}</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty">${msg}</div></td></tr>`;
     return;
   }
   tbody.innerHTML = filtered.map(r=>`
@@ -2416,6 +2442,7 @@ function renderAttendanceTable(){
       <td>${r.logoffs || '—'}</td>
       <td>${breaksCellHtml(r.breaks)}</td>
       <td>${r.scheduledLabel}</td>
+      <td style="color:${r.presencePercent!=null && r.presencePercent<70?'var(--red)':'inherit'};">${r.presencePercent!=null ? r.presencePercent+'%' : '—'}</td>
       <td style="color:${r.late?'var(--red)':(r.status==='On time'?'var(--green)':'var(--grey-3)')};">${r.status}</td>
     </tr>
   `).join('');
@@ -2443,10 +2470,6 @@ function fmtWait(seconds){
   return s>0 ? `${m}m ${s}s` : `${m}m`;
 }
 
-// Agents are considered "available" for a queue from their first login of the
-// day until this hour — a fixed workday window, not the live per-call ready flag.
-const DAY_END_HOUR = 17;
-
 // "Active" = still logged in on that queue, not necessarily ready this exact
 // second (so a call or wrap-up doesn't make the count flicker). Determined by
 // each agent/queue pair's most recent event today: 'in'/'wrapup_end' means
@@ -2469,9 +2492,6 @@ function calcQueueActiveKeys(){
 }
 
 function countAvailableForQueue(q, activeKeys){
-  const cutoff = new Date();
-  cutoff.setHours(DAY_END_HOUR, 0, 0, 0);
-  if(Date.now() > cutoff.getTime()) return 0;
   const members = [...(q.ready_agents || []), ...(q.offline_agents || [])];
   return members.filter(n => activeKeys.has(n + '||' + q.description)).length;
 }
@@ -2550,15 +2570,17 @@ async function pollLive(){
   const statusEl = document.getElementById('liveStatus');
   const statusText = document.getElementById('liveStatusText');
   try{
-    const [res, sres, cres] = await Promise.all([
+    const [res, sres, cres, ares] = await Promise.all([
       fetch(liveUrl('events.json'), {cache:'no-store'}),
       fetch(liveUrl('status.json'), {cache:'no-store'}).catch(()=>null),
       fetch(liveUrl('calls.json'), {cache:'no-store'}).catch(()=>null),
+      fetch(liveUrl('agent-stats.json'), {cache:'no-store'}).catch(()=>null),
     ]);
     if(!res.ok) throw new Error('bad response');
     const fresh = await res.json();
     if(sres && sres.ok) liveStatus = await sres.json(); else liveStatus = null;
     if(cres && cres.ok) liveCalls = await cres.json(); else liveCalls = null;
+    if(ares && ares.ok) liveAgentStats = await ares.json(); else liveAgentStats = null;
 
     // Accumulate wait-time sample for TV sparkline
     if(liveStatus && liveStatus.queues) {
@@ -2796,39 +2818,6 @@ function renderTVWeather(){
   `;
 }
 
-function shortWeekLabel(label) {
-  const uke = label.match(/[Uu]ke\s*(\d+)/);
-  if(uke) return 'U' + uke[1];
-  const wk = label.match(/W(\d+)/);
-  if(wk) return 'W' + wk[1];
-  const date = label.match(/(\d{2})\.(\d{2})/);
-  if(date) return date[1] + '/' + date[2];
-  return label.slice(0, 6);
-}
-
-function buildWeeklyRateData() {
-  const weeks = distinctPeriods().filter(p => p.granularity === 'Weekly').slice(0, 7).reverse();
-  const data = weeks.map(period => {
-    const teamRec = ALL_TEAM_RECORDS.find(r => r.periodType+'||'+r.periodLabel === period.key);
-    let rate = null;
-    if(teamRec && teamRec.totalCalls > 0) {
-      rate = teamRec.answered / teamRec.totalCalls * 100;
-    } else {
-      const eligible = ALL_RECORDS
-        .filter(r => r.periodType+'||'+r.periodLabel === period.key && r.attempts >= 5 && r.answerRate != null);
-      if(eligible.length) rate = eligible.reduce((s,r) => s + r.answerRate, 0) / eligible.length;
-    }
-    return rate != null ? {label: period.label, shortLabel: shortWeekLabel(period.label), rate, isRecord: false} : null;
-  }).filter(Boolean);
-  // Mark the latest week as a record if it beats all previous weeks
-  if(data.length >= 2) {
-    const latest = data[data.length - 1];
-    const prevMax = Math.max(...data.slice(0, -1).map(d => d.rate));
-    if(latest.rate >= prevMax) latest.isRecord = true;
-  }
-  return data;
-}
-
 function renderSVGSparkline(samples) {
   const today = samples.filter(s => isToday(s.ts));
   const latest = today.length ? today[today.length - 1].avgWait : 0;
@@ -2865,31 +2854,41 @@ function renderSVGSparkline(samples) {
   return `<div class="tv-sparkline-val">${valHtml}</div>${svgBody}`;
 }
 
-function renderSVGBars(weeklyData) {
-  if(!weeklyData.length) return '';
-  const W = 400, H = 80;
-  const n = weeklyData.length;
-  const barW = Math.min(48, Math.floor((W - (n - 1) * 8) / n));
-  const totalW = n * barW + (n - 1) * 8;
+// Per-agent answered-call counts, Monday-of-this-week through now — Unifon's
+// own AgentReport totals via capture-server's /agent-stats.json, not a report
+// upload or a locally-inferred count.
+function computeCallsAnsweredThisWeek(){
+  if(!liveAgentStats || !liveAgentStats.agents) return [];
+  return liveAgentStats.agents
+    .filter(a => a.count > 0)
+    .sort((a,b) => b.count - a.count);
+}
+
+// Same visual language as renderSVGBars (thin rounded bars, translucent white,
+// a single highlight color for whoever's currently leading) adapted to raw
+// counts instead of percentages, and to a variable number of agents.
+function renderSVGCallBars(data){
+  if(!data.length) return '';
+  const W = 460, H = 100;
+  const n = data.length;
+  const barW = Math.min(38, Math.floor((W - (n - 1) * 10) / n));
+  const totalW = n * barW + (n - 1) * 10;
   const startX = (W - totalW) / 2;
-  const bars = weeklyData.map((d, i) => {
-    const x = startX + i * (barW + 8);
-    const barH = Math.max(2, (d.rate / 100) * H);
+  const max = Math.max(...data.map(d => d.count));
+  const bars = data.map((d, i) => {
+    const x = startX + i * (barW + 10);
+    const barH = Math.max(2, (d.count / max) * H);
     const y = H - barH;
-    const isLatest = i === n - 1;
-    const fill = d.isRecord ? '#F6C34A' : isLatest ? '#008447' : 'rgba(255,255,255,0.14)';
-    const valCol = isLatest ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.5)';
-    const lblCol = isLatest ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.3)';
-    const recordLabel = d.isRecord
-      ? `<text x="${(x+barW/2).toFixed(1)}" y="${(y-17).toFixed(1)}" text-anchor="middle" fill="#F6C34A" font-size="9" font-family="Inter,sans-serif" font-weight="700">★ best</text>`
-      : '';
+    const isTop = i === 0;
+    const fill = isTop ? '#008447' : 'rgba(255,255,255,0.16)';
+    const valCol = isTop ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)';
+    const firstName = d.name.split(' ')[0];
     return `
       <rect x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${barH.toFixed(1)}" rx="3" fill="${fill}"/>
-      ${recordLabel}
-      <text x="${(x+barW/2).toFixed(1)}" y="${(y-5).toFixed(1)}" text-anchor="middle" fill="${valCol}" font-size="10" font-family="Inter,sans-serif" font-weight="600">${d.rate.toFixed(0)}%</text>
-      <text x="${(x+barW/2).toFixed(1)}" y="${(H+15).toFixed(1)}" text-anchor="middle" fill="${lblCol}" font-size="9" font-family="Inter,sans-serif">${d.shortLabel}</text>`;
+      <text x="${(x+barW/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" fill="${valCol}" font-size="11" font-family="Inter,sans-serif" font-weight="700">${d.count}</text>
+      <text x="${(x+barW/2).toFixed(1)}" y="${(H+14).toFixed(1)}" text-anchor="middle" fill="rgba(255,255,255,0.35)" font-size="9" font-family="Inter,sans-serif">${firstName}</text>`;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H+22}" style="width:100%;height:88px;display:block;">${bars}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H+22}" style="width:100%;height:110px;display:block;">${bars}</svg>`;
 }
 
 function renderTV(){
@@ -3002,30 +3001,16 @@ function renderTVOnline(){
 
 function renderTVStats(){
   const el = document.getElementById('tvStatsContent');
-  if(!ALL_RECORDS.length){
+  if(!liveConnected){
     el.innerHTML = `
-      <div class="tv-section-label">Weekly performance</div>
-      <div class="tv-no-data">Upload a Unifon report to see performance data</div>`;
+      <div class="tv-section-label">Most calls answered<span class="tv-period-tag">this week</span></div>
+      <div class="tv-no-data">Waiting for local capture...</div>`;
     return;
   }
-  const allPeriods = distinctPeriods();
-  const period = allPeriods.find(p => p.granularity === 'Weekly') || allPeriods[0];
-  if(!period){ el.innerHTML = ''; return; }
-  const rows = ALL_RECORDS.filter(r => r.periodType+'||'+r.periodLabel === period.key);
-  const eligible = rows.filter(r => r.attempts >= 5 && r.answerRate != null);
-  const teamAvg = eligible.length ? eligible.reduce((s,r) => s + r.answerRate, 0) / eligible.length : null;
-  const weeklyData = buildWeeklyRateData();
-  const sectionTitle = period.granularity === 'Weekly' ? 'Last week' : 'Recent period';
+  const data = computeCallsAnsweredThisWeek();
   el.innerHTML = `
-    <div class="tv-section-label">${sectionTitle}<span class="tv-period-tag">${period.label}</span></div>
-    ${teamAvg != null ? `
-      <div class="tv-team-rate">${teamAvg.toFixed(0)}%</div>
-      <div class="tv-team-label">Team answer rate</div>
-    ` : ''}
-    ${weeklyData.length >= 2 ? `
-      <div class="tv-chart-label">Weekly trend</div>
-      ${renderSVGBars(weeklyData)}
-    ` : ''}
+    <div class="tv-section-label">Most calls answered<span class="tv-period-tag">this week</span></div>
+    ${data.length ? renderSVGCallBars(data) : '<div class="tv-no-data">No calls answered yet this week</div>'}
   `;
 }
 
