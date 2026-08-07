@@ -513,6 +513,7 @@
           <span style="font-size:11px; color:var(--grey-3);">From live capture — last 30 days</span>
           <button class="btn ghost small" id="copyAttendanceBtn" onclick="copyAttendanceTable()">Copy table</button>
           <span class="copy-feedback" id="copyAttendanceFeedback">Copied!</span>
+          <button class="btn small" id="reportAttendanceBtn" onclick="openAttendanceReport()">Generate report</button>
         </div>
       </div>
       <div style="font-size:11px; color:var(--grey-3); margin-bottom:8px;">Hide short-term helpers who don't belong in the regular schedule or history — this just hides them here, their captured events aren't deleted, and unhiding brings everything back.</div>
@@ -1262,6 +1263,116 @@ function copyAttendanceTable(){
     fb.classList.add('show');
     setTimeout(() => fb.classList.remove('show'), 2000);
   }).catch(() => showToast('Could not access clipboard'));
+}
+
+// Builds a standalone, print-ready report of whatever the Login History
+// table is currently showing (same name + date filters) and opens it in a
+// new tab. Self-contained HTML via a Blob URL — no server round-trip, no
+// dependency on this dashboard tab staying open.
+function openAttendanceReport(){
+  const filtered = filteredAttendanceRows();
+  if(!filtered.length){ showToast('Nothing to report — no rows match the current filters'); return; }
+
+  const dateRange = attendanceDateRangeKeys();
+  const activeDateFilter = ATTENDANCE_DATE_FILTERS.find(o => o.key===attendanceDateFilter);
+  const rangeLabel = dateRange
+    ? (dateRange.from===dateRange.to ? fmtDateLabel(dateRange.from) : `${fmtDateLabel(dateRange.from)} – ${fmtDateLabel(dateRange.to)}`)
+    : (activeDateFilter ? activeDateFilter.label : 'All time');
+  const whoLabel = attendanceFilter==='All' ? 'Whole team' : attendanceFilter;
+
+  const distinctAgents = new Set(filtered.map(r => r.name)).size;
+  const lateCount = filtered.filter(r => r.late).length;
+  const totalLogoffs = filtered.reduce((s,r) => s + (r.logoffs||0), 0);
+  const totalBreaks = filtered.reduce((s,r) => s + r.breaks.length, 0);
+  const withPresence = filtered.filter(r => r.presencePercent!=null);
+  const avgPresence = withPresence.length
+    ? Math.round(withPresence.reduce((s,r) => s + r.presencePercent, 0) / withPresence.length)
+    : null;
+
+  const summaryTiles = [
+    { label: 'Shifts in range', value: filtered.length },
+    { label: 'Agents', value: distinctAgents },
+    { label: 'Avg on queue', value: avgPresence!=null ? avgPresence+'%' : '—' },
+    { label: 'Late', value: lateCount, warn: lateCount>0 },
+    { label: 'Long breaks', value: totalBreaks, warn: totalBreaks>0 },
+    { label: 'Logoffs', value: totalLogoffs },
+  ];
+
+  const rowsHtml = filtered.map(r => `
+    <tr>
+      <td>${fmtDateLabel(r.dateKey)}</td>
+      <td>${r.name}</td>
+      <td>${fmtTime(r.ts)}</td>
+      <td>${r.logoffs || '—'}</td>
+      <td>${r.breaks.length ? r.breaks.map(b=>`${fmtTime(b.outTs)}–${fmtTime(b.inTs)} (${b.minutes}m)`).join('<br>') : '—'}</td>
+      <td>${r.scheduledLabel}</td>
+      <td class="${r.presencePercent!=null && r.presencePercent<70 ? 'bad' : ''}">${r.presencePercent!=null ? r.presencePercent+'%' : '—'}</td>
+      <td class="${r.late ? 'bad' : (r.status==='On time' ? 'good' : '')}">${r.status}</td>
+    </tr>
+  `).join('');
+
+  const generatedAt = new Date().toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' });
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Login history report — ${whoLabel}, ${rangeLabel}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Fira+Sans:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  :root{ --navy:#000743; --white:#F9FBFF; --foreground:#0D101A; --red:#CF2141; --green:#008447; --yellow:#F6C34A; --grey-1:#EEF2F7; --grey-2:#C9D2E0; --grey-3:#6B7690; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--white); color:var(--foreground); font-family:'Inter',system-ui,sans-serif; font-weight:500; letter-spacing:-0.01em; padding:36px; line-height:1.4; }
+  .wrap{ max-width:960px; margin:0 auto; }
+  .head{ display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:22px; border-bottom:2px solid var(--navy); padding-bottom:16px; }
+  .brand{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:20px; color:var(--navy); }
+  h1{ font-family:'Inter',sans-serif; font-weight:700; font-size:20px; margin:6px 0 2px; color:var(--navy); }
+  .meta{ font-size:12px; color:var(--grey-3); }
+  .meta-right{ text-align:right; font-size:11px; color:var(--grey-3); }
+  .tiles{ display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-bottom:24px; }
+  .tile{ border:1px solid var(--grey-1); border-radius:8px; padding:12px 14px; }
+  .tile .v{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:22px; color:var(--navy); }
+  .tile .v.warn{ color:var(--red); }
+  .tile .l{ font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--grey-3); margin-top:2px; }
+  table{ width:100%; border-collapse:collapse; font-size:12px; }
+  th{ text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--grey-3); padding:8px 10px; border-bottom:2px solid var(--grey-2); }
+  td{ padding:8px 10px; border-bottom:1px solid var(--grey-1); vertical-align:top; }
+  tr:nth-child(even) td{ background:#FBFCFE; }
+  .bad{ color:var(--red); font-weight:600; }
+  .good{ color:var(--green); font-weight:600; }
+  .foot{ margin-top:22px; font-size:10px; color:var(--grey-3); }
+  .printbar{ text-align:right; margin-bottom:16px; }
+  .printbar button{ font-family:'Inter',sans-serif; font-weight:600; font-size:13px; cursor:pointer; border-radius:6px; padding:8px 14px; border:1px solid var(--navy); background:var(--navy); color:#fff; }
+  @media print{ .printbar{ display:none; } body{ padding:0 24px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="printbar"><button onclick="window.print()">Print / save as PDF</button></div>
+  <div class="head">
+    <div>
+      <div class="brand">munu.</div>
+      <h1>Login history report</h1>
+      <div class="meta">${whoLabel} · ${rangeLabel}</div>
+    </div>
+    <div class="meta-right">Generated ${generatedAt}<br>From Unifon live capture</div>
+  </div>
+  <div class="tiles">
+    ${summaryTiles.map(t => `<div class="tile"><div class="v${t.warn?' warn':''}">${t.value}</div><div class="l">${t.label}</div></div>`).join('')}
+  </div>
+  <table>
+    <thead><tr><th>Date</th><th>Name</th><th>First login</th><th>Logoffs</th><th>Long breaks (&gt;35m)</th><th>Scheduled</th><th>On queue</th><th>Status</th></tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+  <div class="foot">${filtered.length} shift${filtered.length===1?'':'s'} across ${distinctAgents} agent${distinctAgents===1?'':'s'}.</div>
+</div>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
 }
 
 /* ---------- distinct queues ---------- */
@@ -2407,6 +2518,18 @@ function renderAttendanceDateChips(){
   document.getElementById('attendanceCustomRange').style.display = attendanceDateFilter==='custom' ? 'flex' : 'none';
 }
 
+// The same name + date-range filtering the Login History table applies,
+// factored out so the printable report can't drift from what's on screen.
+function filteredAttendanceRows(){
+  const rows = computeAttendanceRows();
+  const dateRange = attendanceDateRangeKeys();
+  return rows.filter(r=>{
+    if(attendanceFilter!=='All' && r.name!==attendanceFilter) return false;
+    if(dateRange && (r.dateKey < dateRange.from || r.dateKey > dateRange.to)) return false;
+    return true;
+  });
+}
+
 // Only the login-history table — safe to call on every poll without
 // clobbering whatever the user is currently typing into the schedule inputs.
 function renderAttendanceTable(){
@@ -2422,12 +2545,7 @@ function renderAttendanceTable(){
   });
   renderAttendanceDateChips();
 
-  const dateRange = attendanceDateRangeKeys();
-  const filtered = rows.filter(r=>{
-    if(attendanceFilter!=='All' && r.name!==attendanceFilter) return false;
-    if(dateRange && (r.dateKey < dateRange.from || r.dateKey > dateRange.to)) return false;
-    return true;
-  });
+  const filtered = filteredAttendanceRows();
   const tbody = document.getElementById('attendanceTbody');
   if(filtered.length===0){
     const msg = rows.length===0 ? 'No login history captured yet.' : 'No login history matches the current filters.';
