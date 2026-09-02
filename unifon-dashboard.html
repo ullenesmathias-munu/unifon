@@ -205,120 +205,184 @@
   .btn.notif-on{ background:var(--green); color:#fff; border-color:var(--green); }
   .btn.notif-on:hover{ background:#006b39; border-color:#006b39; }
 
-  /* ===== TV / WALLBOARD VIEW ===== */
+  /* ===== TV / WALLBOARD VIEW =====
+     Light theme, matching the Zendesk "Support Weekly" dashboard: white cards
+     on a light page, one colour per agent, y-axis with dotted gridlines.
+     Everything is sized in vh/clamp() so it fills any TV without scrolling. */
   #tv-view{
     display:none; position:fixed; inset:0; z-index:9999;
-    background:var(--navy); color:var(--white);
-    font-family:'Inter',system-ui,sans-serif; font-weight:500;
+    background:var(--tvpage); color:var(--tvink1);
+    font-family:'Inter',system-ui,sans-serif; font-weight:500; letter-spacing:-0.01em;
     flex-direction:column; overflow:hidden;
+    gap:clamp(8px,1vh,14px);
+    padding:clamp(12px,1.4vh,20px) clamp(14px,1.4vw,26px);
   }
   #tv-view.active{ display:flex; }
 
-  .tv-bar{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:14px 28px; border-bottom:1px solid rgba(255,255,255,0.08); flex-shrink:0;
+  #tv-view{
+    --tvpage:#F7F9FC; --tvcard:#FFFFFF; --tvline:#E5EAF2;
+    --tvink1:#0D1226; --tvink2:#6B7690; --tvink3:#9AA5BC;
+    --tvgreen:#10B981; --tvamber:#F59E0B; --tvred:#DC2626;
   }
-  .tv-bar-left{ display:flex; align-items:baseline; gap:14px; }
-  .tv-brand-tv{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:22px; }
-  .tv-title{ font-size:13px; opacity:0.4; }
-  .tv-bar-right{ display:flex; align-items:center; gap:18px; }
-  .tv-live-pill{ display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; }
-  .tv-live-pill .pdot{ width:8px; height:8px; border-radius:50%; background:var(--grey-2); }
-  .tv-live-pill.connected .pdot{ background:var(--green); }
-  .tv-clock{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:22px; letter-spacing:.02em; }
-  .tv-exit{ font-size:11px; color:rgba(255,255,255,0.3); background:none; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:4px 10px; cursor:pointer; font-family:'Inter',sans-serif; }
-  .tv-exit:hover{ color:var(--white); border-color:rgba(255,255,255,0.5); }
 
-  .tv-queues{
-    display:flex; gap:10px; padding:14px 28px; flex-shrink:0;
-    border-bottom:1px solid rgba(255,255,255,0.08);
+  /* header */
+  .tvh{ display:flex; align-items:center; justify-content:space-between; flex:0 0 auto; }
+  .tvh-title{ font-size:clamp(17px,2.1vh,26px); font-weight:800; line-height:1; }
+  .tvh-right{ display:flex; align-items:center; gap:clamp(8px,0.8vw,14px); }
+  .tvh-note{ font-size:clamp(9.5px,1.1vh,12.5px); color:var(--tvink2); }
+  .tvh-note.stale{ color:var(--tvred); font-weight:700; }
+  .tvclock{ font-family:'Fira Sans',sans-serif; font-weight:700; font-size:clamp(14px,1.7vh,22px); font-variant-numeric:tabular-nums; }
+  .tvbtn{
+    font-family:'Inter',sans-serif; font-size:clamp(9.5px,1.05vh,12.5px); font-weight:600;
+    border-radius:7px; padding:6px 12px; border:1px solid var(--tvline);
+    background:var(--tvcard); color:var(--tvink1); cursor:pointer;
   }
-  .tv-qcard{
-    flex:1; background:rgba(255,255,255,0.06); border-radius:8px;
-    padding:14px 16px 12px; text-align:center;
-  }
-  .tv-qcard .qname-tv{ font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; opacity:0.45; margin-bottom:8px; line-height:1.3; }
-  .tv-agents{ display:flex; align-items:baseline; justify-content:center; gap:4px; line-height:1; }
-  .tv-ready{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:52px; color:var(--green); }
-  .tv-ready.zero{ color:rgba(255,255,255,0.18); }
-  .tv-slash{ font-family:'Fira Sans',sans-serif; font-weight:700; font-size:30px; opacity:0.25; }
-  .tv-total-num{ font-family:'Fira Sans',sans-serif; font-weight:700; font-size:30px; opacity:0.6; }
-  .tv-sub{ font-size:10px; text-transform:uppercase; letter-spacing:.04em; opacity:0.35; margin-top:4px; }
-  .tv-qdivider{ height:1px; background:rgba(255,255,255,0.1); margin:10px 0; }
-  .tv-wait{ font-family:'Fira Sans',sans-serif; font-weight:700; font-size:22px; }
-  .tv-wait.slow{ color:var(--yellow); }
+  .tvbtn.dark{ background:var(--navy); color:#fff; border-color:var(--navy); }
+  .tv-weather{ display:flex; align-items:baseline; gap:6px; font-size:clamp(9.5px,1.1vh,12.5px); color:var(--tvink2); }
+  .tv-weather .wcity{ opacity:0.65; }
 
-  .tv-body{
-    display:grid; grid-template-columns:1fr 1fr; flex:1; overflow:hidden;
+  /* card */
+  .tvcard{
+    background:var(--tvcard); border:1px solid var(--tvline); border-radius:clamp(8px,1vh,12px);
+    padding:clamp(10px,1.2vh,17px) clamp(12px,1.1vw,20px);
+    box-shadow:0 1px 2px rgba(13,18,38,0.04);
   }
-  .tv-col{ padding:20px 28px; overflow:hidden; }
-  .tv-col + .tv-col{ border-left:1px solid rgba(255,255,255,0.08); }
-  .tv-section-label{
-    font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.08em;
-    opacity:0.35; margin-bottom:14px; display:flex; align-items:center; gap:8px;
-  }
-  .tv-period-tag{ opacity:0.6; font-weight:500; letter-spacing:.02em; text-transform:none; }
+  .tvcard-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:clamp(6px,0.8vh,11px); gap:10px; }
+  .tvcard-title{ font-size:clamp(10.5px,1.2vh,14px); font-weight:600; color:var(--tvink2); }
 
-  .tv-agent-row{
-    display:flex; align-items:center; gap:12px;
-    padding:9px 0; font-size:18px; font-weight:500;
-    border-bottom:1px solid rgba(255,255,255,0.06);
+  /* top row: waiting hero + answered today */
+  .tvtop{ display:grid; grid-template-columns:2fr 1fr; gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
+  .tvhero, .tvtoday{
+    background:var(--tvcard); border:1px solid var(--tvline); border-radius:clamp(8px,1vh,12px);
+    box-shadow:0 1px 2px rgba(13,18,38,0.04);
+    padding:clamp(10px,1.2vh,18px) clamp(14px,1.3vw,24px);
+    display:flex; align-items:center; position:relative; overflow:hidden;
   }
-  .tv-agent-row .adot{ width:9px; height:9px; border-radius:50%; background:var(--green); flex-shrink:0; }
-  .tv-agent-row .adot.busy{ background:var(--yellow); }
-  .tv-agent-row .on-call-tag{ margin-left:auto; font-size:11px; opacity:0.5; }
+  .tvhero{ gap:clamp(16px,1.8vw,34px); }
+  .tvhero::after{ content:''; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--hero-c,var(--tvgreen)); }
+  .tvtoday::after{ content:''; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--navy); }
+  .tvhero-main{ display:flex; align-items:baseline; gap:clamp(10px,1vw,18px); }
+  .tvhero-num{ font-family:'Fira Sans',sans-serif; font-weight:900; line-height:0.9; font-size:clamp(42px,7.4vh,96px); color:var(--hero-c,var(--tvgreen)); font-variant-numeric:tabular-nums; }
+  .tvhero-txt{ display:flex; flex-direction:column; }
+  .tvhero-lbl{ font-size:clamp(11px,1.5vh,19px); font-weight:700; line-height:1.15; }
+  .tvhero-sub{ font-size:clamp(9px,1.05vh,12.5px); color:var(--tvink2); margin-top:3px; }
+  .tvhero-side{ margin-left:auto; display:flex; gap:clamp(14px,1.5vw,30px); padding-left:clamp(14px,1.5vw,28px); border-left:1px solid var(--tvline); }
+  .tvhs{ display:flex; flex-direction:column; }
+  .tvhs-v{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:clamp(18px,2.5vh,32px); line-height:1; }
+  .tvhs-l{ font-size:clamp(8px,0.9vh,10.5px); color:var(--tvink3); margin-top:4px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
 
-  .tv-no-data{ opacity:0.25; font-size:15px; padding-top:10px; }
-  .tv-no-live-queues{ opacity:0.25; font-size:14px; }
-  .tv-col-divider{ height:1px; background:rgba(255,255,255,0.08); margin:16px 0; }
-  .tv-chart-label{ font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; opacity:0.35; margin-bottom:10px; }
-  .tv-sparkline-val{ display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
-  .tv-sparkline-big{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:32px; line-height:1; }
-  .tv-sparkline-unit{ font-size:11px; opacity:0.4; }
-  .tv-weather{ display:flex; align-items:center; gap:8px; padding:5px 12px; background:rgba(255,255,255,0.06); border-radius:8px; }
-  .tv-weather .wemoji{ font-size:18px; line-height:1; }
-  .tv-weather .wtemp{ font-family:'Fira Sans',sans-serif; font-size:18px; font-weight:700; }
-  .tv-weather .wcity{ font-size:11px; opacity:0.4; }
-  .tv-fs-btn{ font-size:15px; line-height:1; color:rgba(255,255,255,0.35); background:none; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:3px 9px; cursor:pointer; font-family:'Inter',sans-serif; }
-  .tv-fs-btn:hover{ color:var(--white); border-color:rgba(255,255,255,0.5); }
-  .tv-activity-row{ display:flex; gap:24px; margin-bottom:2px; }
-  .tv-stat-item{ display:flex; flex-direction:column; }
-  .tv-stat-num{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:26px; line-height:1; }
-  .tv-stat-lbl{ font-size:10px; opacity:0.35; text-transform:uppercase; letter-spacing:.04em; margin-top:3px; }
+  /* main split */
+  .tvmain{ display:grid; grid-template-columns:2fr 1.35fr; gap:clamp(8px,0.8vw,15px); flex:1 1 auto; min-height:0; }
+  .tvpanel{ display:flex; flex-direction:column; min-height:0; }
+
+  /* chart */
+  .tvchart{ display:flex; flex:1 1 auto; min-height:0; }
+  .tvyaxis{ width:clamp(22px,1.9vw,32px); flex:0 0 auto; position:relative; font-size:clamp(8px,0.9vh,10.5px); color:var(--tvink3); }
+  .tvytick{ position:absolute; right:6px; transform:translateY(-50%); }
+  .tvplot{ flex:1 1 auto; position:relative; min-width:0; border-left:1px solid var(--tvline); border-bottom:1px solid var(--tvline); }
+  .tvgrid{ position:absolute; left:0; right:0; border-top:1px dotted var(--tvline); }
+  .tvbars{ position:absolute; inset:0; display:flex; align-items:flex-end; gap:clamp(4px,0.5vw,11px); padding:0 clamp(4px,0.5vw,9px); }
+  .tvbcol{ flex:1 1 0; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; min-width:0; }
+  .tvbval{ font-size:clamp(9px,1.05vh,12.5px); font-weight:700; color:var(--tvink2); margin-bottom:4px; line-height:1; }
+  .tvbar{ width:80%; max-width:clamp(24px,2.8vw,48px); border-radius:3px 3px 0 0; min-height:3px; }
+  .tvnames{ display:flex; gap:clamp(4px,0.5vw,11px); flex:0 0 auto; margin-top:clamp(5px,0.6vh,9px); padding:0 clamp(4px,0.5vw,9px); }
+  .tvnames-pad{ width:clamp(22px,1.9vw,32px); flex:0 0 auto; }
+  .tvncol{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; }
+  .tvnname{ font-size:clamp(8.5px,1vh,12px); font-weight:600; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  .tvnstats{ margin-top:clamp(3px,0.5vh,7px); width:100%; border:1px solid var(--tvline); border-radius:6px; padding:clamp(3px,0.4vh,5px) 2px; display:flex; flex-direction:column; gap:clamp(1px,0.2vh,3px); }
+  .tvnstat{ display:flex; align-items:center; justify-content:center; gap:4px; font-size:clamp(7.5px,0.9vh,11px); font-weight:600; font-variant-numeric:tabular-nums; }
+
+  /* on the phones */
+  .tvwho{ display:flex; flex-direction:column; flex:1 1 auto; min-height:0; }
+  .tvwho-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:clamp(7px,0.9vh,13px); flex:0 0 auto; gap:8px; }
+  .tvwho-title{ font-size:clamp(12px,1.5vh,19px); font-weight:800; }
+  .tvwho-count{ display:flex; gap:clamp(7px,0.75vw,13px); align-items:baseline; }
+  .tvwc{ display:flex; align-items:baseline; gap:4px; font-size:clamp(8.5px,1vh,12px); color:var(--tvink2); font-weight:600; }
+  .tvwc b{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:clamp(14px,1.9vh,24px); line-height:1; }
+  .tvwho-list{ display:flex; flex-direction:column; gap:clamp(4px,0.5vh,7px); overflow:hidden; flex:1 1 auto; min-height:0; }
+  .tvprow{
+    display:flex; align-items:center; gap:clamp(8px,0.8vw,13px);
+    border:1px solid var(--tvline); border-radius:9px;
+    padding:clamp(5px,0.75vh,11px) clamp(9px,0.9vw,15px);
+    background:var(--tvcard);
+  }
+  .tvprow.oncall{ background:#FFFBF2; border-color:#F6DFB4; }
+  .tvprow.offqueue{ background:#FDF3F4; border-color:#F3C9CD; }
+  .tvprow.offqueue .tvpname{ color:var(--tvink3); }
+  .tvav{
+    width:clamp(24px,3.1vh,40px); height:clamp(24px,3.1vh,40px); border-radius:50%;
+    display:flex; align-items:center; justify-content:center; flex:0 0 auto;
+    font-family:'Fira Sans',sans-serif; font-weight:900; color:#fff; font-size:clamp(9.5px,1.25vh,16px);
+  }
+  .tvprow.offqueue .tvav{ background:#CBD3E1 !important; }
+  .tvpname{ font-size:clamp(11px,1.4vh,18px); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tvpstat{ margin-left:auto; display:flex; align-items:center; gap:6px; flex:0 0 auto; }
+  .tvbadge{ display:flex; align-items:center; gap:5px; font-size:clamp(8.5px,1vh,12.5px); font-weight:700; border-radius:999px; padding:clamp(2px,0.3vh,5px) clamp(7px,0.7vw,12px); white-space:nowrap; }
+  .tvbadge.free{ background:#E7F8F1; color:#0A7A55; }
+  .tvbadge.busy{ background:#FDF0DC; color:#9A6206; }
+  .tvbadge.gone{ background:#FBE0E3; color:#A61B26; }
+  .tvbadge i{ width:7px; height:7px; border-radius:50%; display:inline-block; background:currentColor; }
+  .tvtimer{ font-variant-numeric:tabular-nums; font-size:clamp(8.5px,1vh,12.5px); color:var(--tvink2); font-weight:600; }
+
+  /* kpis */
+  .tvkpis{ display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
+  .tvkpi{
+    background:var(--tvcard); border:1px solid var(--tvline); border-radius:clamp(8px,1vh,12px);
+    padding:clamp(9px,1.1vh,17px) clamp(14px,1.3vw,24px);
+    box-shadow:0 1px 2px rgba(13,18,38,0.04);
+  }
+  .tvkval{ font-size:clamp(22px,3vh,42px); font-weight:800; line-height:1; }
+  .tvkval.good{ color:var(--tvgreen); }
+  .tvklbl{ font-size:clamp(9px,1.05vh,13px); color:var(--tvink2); margin-top:5px; }
+
+  .tv-empty{ font-size:clamp(10px,1.2vh,14px); color:var(--tvink3); padding:8px 0; }
 </style>
 </head>
 <body>
 
 <!-- TV / Wallboard View — shown when ?tv is in the URL -->
 <div id="tv-view">
-  <div class="tv-bar">
-    <div class="tv-bar-left">
-      <span class="tv-brand-tv">munu.</span>
-      <span class="tv-title">Unifon · Live</span>
-    </div>
-    <div class="tv-bar-right">
+
+  <div class="tvh">
+    <div class="tvh-title">Support Live &mdash; Unifon</div>
+    <div class="tvh-right">
       <div class="tv-weather" id="tvWeather" style="display:none;"></div>
-      <div class="tv-live-pill" id="tvLivePill"><span class="pdot"></span><span id="tvLiveText">Connecting...</span></div>
-      <div class="tv-clock" id="tvClock">--:--:--</div>
-      <button class="tv-fs-btn" id="tvFsBtn" onclick="toggleFullscreen()" title="Fullscreen">&#x26F6;</button>
-      <button class="tv-exit" onclick="exitTV()">&#x2715; Exit TV</button>
+      <span class="tvh-note" id="tvLiveText">Connecting&hellip;</span>
+      <span class="tvclock" id="tvClock">--:--:--</span>
+      <button class="tvbtn" id="tvFsBtn" onclick="toggleFullscreen()" title="Fullscreen">&#x26F6;</button>
+      <button class="tvbtn dark" onclick="exitTV()">Exit TV Mode</button>
     </div>
   </div>
-  <div class="tv-queues" id="tvQueues">
-    <div class="tv-no-live-queues">Waiting for local capture server...</div>
+
+  <div class="tvtop">
+    <div class="tvhero" id="tvHero"></div>
+    <div class="tvtoday" id="tvToday"></div>
   </div>
-  <div class="tv-body">
-    <div class="tv-col">
-      <div class="tv-section-label">Online now</div>
-      <div id="tvOnlineList"></div>
-    </div>
-    <div class="tv-col">
-      <div id="tvStatsContent">
-        <div class="tv-section-label">Most calls answered<span class="tv-period-tag">this week</span></div>
-        <div class="tv-no-data">Waiting for local capture...</div>
+
+  <div class="tvmain">
+    <div class="tvcard tvpanel">
+      <div class="tvcard-head">
+        <span class="tvcard-title">Calls answered &mdash; week so far</span>
+        <span class="tvcard-title" id="tvChartNote" style="color:var(--tvink3)"></span>
       </div>
+      <div class="tvchart">
+        <div class="tvyaxis" id="tvYAxis"></div>
+        <div class="tvplot" id="tvPlot"><div class="tvbars" id="tvBars"></div></div>
+      </div>
+      <div class="tvnames" id="tvNames"><div class="tvnames-pad"></div></div>
+    </div>
+
+    <div class="tvcard tvwho">
+      <div class="tvwho-head">
+        <span class="tvwho-title">On the phones</span>
+        <span class="tvwho-count" id="tvWhoCount"></span>
+      </div>
+      <div class="tvwho-list" id="tvWhoList"></div>
     </div>
   </div>
+
+  <div class="tvkpis" id="tvKpis"></div>
+
 </div>
 
 <div class="wrap">
@@ -3002,7 +3066,7 @@ function initTV(){
   document.getElementById('tv-view').classList.add('active');
   document.querySelector('.wrap').style.display = 'none';
   document.body.style.padding = '0';
-  document.body.style.background = '#000743';
+  document.body.style.background = '#F7F9FC';
 
   // Clock
   const tick = () => {
@@ -3015,6 +3079,14 @@ function initTV(){
   // Weather — fetch now and every 10 minutes
   fetchWeather();
   setInterval(fetchWeather, 600000);
+
+  // The "on a call" / "off queue" durations and the stale-data warning need to
+  // count up every second; the live poll itself only runs every 8s.
+  setInterval(() => {
+    if(!liveConnected) return;
+    renderTVWho();
+    renderTVStatusNote();
+  }, 1000);
 
   // Fullscreen change listener — keep button label in sync
   document.addEventListener('fullscreenchange', () => {
@@ -3073,209 +3145,379 @@ function renderTVWeather(){
   `;
 }
 
-function renderSVGSparkline(samples) {
-  const today = samples.filter(s => isToday(s.ts));
-  const latest = today.length ? today[today.length - 1].avgWait : 0;
-  const isSlow = latest > 120;
-  const color = isSlow ? '#F6C34A' : '#008447';
-  const W = 400, H = 55;
+/* ---------- TV / wallboard rendering ----------
+ * Light theme matching the Zendesk "Support Weekly" dashboard. Everything here
+ * reads the same live state the rest of the page uses:
+ *   liveStatus      /status.json      — queues + per-queue member lists
+ *   liveCalls       /calls.json       — who is on a call, what is waiting
+ *   liveAgentStats  /agent-stats.json — Unifon's own weekly AgentReport totals
+ *   liveEvents      /events.json      — queue login/logoff history
+ */
 
-  let svgBody = '';
-  if(today.length >= 2) {
-    const maxV = Math.max(...today.map(s => s.avgWait), 60);
-    const pts = today.map((s, i) => {
-      const x = (i / (today.length - 1)) * W;
-      const y = H - (s.avgWait / maxV) * (H - 4);
-      return [x.toFixed(1), y.toFixed(1)];
-    });
-    const path = pts.map((p, i) => (i===0?'M':'L') + p[0] + ',' + p[1]).join(' ');
-    const area = 'M0,' + H + ' ' + pts.map(p => 'L'+p[0]+','+p[1]).join(' ') + ' L' + W + ',' + H + ' Z';
-    svgBody = `
-      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:52px;display:block;">
-        <defs>
-          <linearGradient id="wfill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="${color}" stop-opacity="0.25"/>
-            <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
-          </linearGradient>
-        </defs>
-        <path d="${area}" fill="url(#wfill)"/>
-        <path d="${path}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
-      </svg>`;
-  }
-
-  const valHtml = today.length
-    ? `<span class="tv-sparkline-big" style="color:${color};">${fmtWait(latest)}</span><span class="tv-sparkline-unit">avg now</span>`
-    : `<span class="tv-sparkline-unit" style="opacity:.25;">Accumulating${today.length===1?' — '+fmtWait(today[0]?.avgWait||0):''}...</span>`;
-  return `<div class="tv-sparkline-val">${valHtml}</div>${svgBody}`;
+// Queues hidden from the TV view only — they still appear everywhere else in
+// the dashboard, and the capture server keeps collecting them.
+const TV_HIDDEN_QUEUES = ['kø - vakt'];
+function tvQueueHidden(name){
+  return TV_HIDDEN_QUEUES.includes(String(name || '').trim().toLowerCase());
 }
 
+// One stable colour per agent, assigned by name so a person keeps their colour
+// between refreshes even as the ranking reshuffles.
+const TV_PALETTE = ['#3B82F6','#10B981','#F59E0B','#A855F7','#EC4899','#06B6D4','#E11D48','#84CC16','#0EA5E9','#F97316','#8B5CF6','#14B8A6'];
+function tvColorFor(name){
+  let h = 0;
+  for(let i=0;i<name.length;i++) h = (h*31 + name.charCodeAt(i)) >>> 0;
+  return TV_PALETTE[h % TV_PALETTE.length];
+}
+function tvInitials(name){
+  return name.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase();
+}
+
+const TV_ICON = {
+  calls: c => `<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.5 21 3 13.5 3 4.5c0-.6.4-1 1-1H8c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.2 1l-2.2 2.2Z" fill="${c}"/></svg>`,
+  dur:   c => `<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="${c}" stroke-width="2.2"/><path d="M12 7v5l3.5 2" stroke="${c}" stroke-width="2.2" stroke-linecap="round"/></svg>`,
+  off:   c => `<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="${c}" stroke-width="2.2" stroke-linecap="round"/><path d="M16 17l5-5-5-5M21 12H9" stroke="${c}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+};
+
 // Per-agent answered-call counts, Monday-of-this-week through now — Unifon's
-// own AgentReport totals via capture-server's /agent-stats.json, not a report
-// upload or a locally-inferred count. Logoffs are ours (computeLogoffsThisWeek,
-// from events.json). avgDurationMin comes from /agent-stats.json too, once
-// capture-server has real AgentReport duration fields wired up — null until then.
+// own AgentReport totals via capture-server's /agent-stats.json. Logoffs are
+// ours (computeLogoffsThisWeek, from events.json).
 function computeCallsAnsweredThisWeek(){
   if(!liveAgentStats || !liveAgentStats.agents) return [];
   const logoffs = computeLogoffsThisWeek();
   return liveAgentStats.agents
-    .filter(a => a.count > 0)
+    .filter(a => a.count > 0 && !hiddenAgents.includes(a.name))
     .map(a => ({ ...a, logoffs: logoffs.get(a.name) || 0 }))
     .sort((a,b) => b.count - a.count);
 }
 
-// Same visual language as renderSVGBars (thin rounded bars, translucent white,
-// a single highlight color for whoever's currently leading) adapted to raw
-// counts instead of percentages, and to a variable number of agents. Adds a
-// small sub-line per agent for avg handle time + logoffs this week.
-function renderSVGCallBars(data){
-  if(!data.length) return '';
-  const W = 460, H = 100, subH = 13;
-  const n = data.length;
-  const barW = Math.min(38, Math.floor((W - (n - 1) * 10) / n));
-  const totalW = n * barW + (n - 1) * 10;
-  const startX = (W - totalW) / 2;
-  const max = Math.max(...data.map(d => d.count));
-  const bars = data.map((d, i) => {
-    const x = startX + i * (barW + 10);
-    const barH = Math.max(2, (d.count / max) * H);
-    const y = H - barH;
-    const isTop = i === 0;
-    const fill = isTop ? '#008447' : 'rgba(255,255,255,0.16)';
-    const valCol = isTop ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)';
-    const firstName = d.name.split(' ')[0];
-    const durText = d.avgDurationMin != null ? fmtDur(d.avgDurationMin * 60) : '—';
-    const logoffText = d.logoffs + (d.logoffs === 1 ? ' off' : ' offs');
-    return `
-      <rect x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${barH.toFixed(1)}" rx="3" fill="${fill}"/>
-      <text x="${(x+barW/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" fill="${valCol}" font-size="11" font-family="Inter,sans-serif" font-weight="700">${d.count}</text>
-      <text x="${(x+barW/2).toFixed(1)}" y="${(H+14).toFixed(1)}" text-anchor="middle" fill="rgba(255,255,255,0.35)" font-size="9" font-family="Inter,sans-serif">${firstName}</text>
-      <text x="${(x+barW/2).toFixed(1)}" y="${(H+14+subH).toFixed(1)}" text-anchor="middle" fill="rgba(255,255,255,0.22)" font-size="8" font-family="Inter,sans-serif">${durText} avg · ${logoffText}</text>`;
-  }).join('');
-  return `<svg viewBox="0 0 ${W} ${H+22+subH}" style="width:100%;height:${110+subH}px;display:block;">${bars}</svg>`;
+/* ---------- how long each agent has been in their current state ----------
+ * /calls.json reports *whether* an agent is on a call but not since when, so
+ * the first time we see someone pick up we note the timestamp and count from
+ * there. That means a timer only appears once this page has watched the call
+ * start — on a fresh load, an in-progress call shows no timer rather than a
+ * wrong one. Off-queue durations come from events.json instead, which has real
+ * timestamps, so those are correct immediately.
+ */
+const tvCallSince = new Map(); // name -> ts when we first saw them on a call
+function tvTrackCallState(onCallNames){
+  for(const name of onCallNames){
+    if(!tvCallSince.has(name)) tvCallSince.set(name, Date.now());
+  }
+  for(const name of Array.from(tvCallSince.keys())){
+    if(!onCallNames.has(name)) tvCallSince.delete(name);
+  }
+}
+function tvFmtSince(ms){
+  const s = Math.floor(ms/1000);
+  if(s < 60) return s+'s';
+  const m = Math.floor(s/60);
+  if(m < 60) return m+'m';
+  return Math.floor(m/60)+'h '+(m%60)+'m';
+}
+
+// Everyone the capture server has ever seen log onto a visible queue (minus
+// hidden agents) — so a new starter shows up automatically the first time they
+// log on, and there's no roster to maintain.
+function tvKnownAgents(){
+  const names = new Set();
+  for(const e of liveEvents){
+    if(tvQueueHidden(e.queue) || hiddenAgents.includes(e.name)) continue;
+    names.add(e.name);
+  }
+  if(liveStatus && liveStatus.queues){
+    for(const q of liveStatus.queues){
+      if(tvQueueHidden(q.description)) continue;
+      for(const n of [...(q.ready_agents||[]), ...(q.offline_agents||[])]){
+        if(!hiddenAgents.includes(n)) names.add(n);
+      }
+    }
+  }
+  return names;
+}
+
+// Most recent genuine logoff per agent, for the "off 47m" hint on off-queue rows.
+function tvLastLogoffTs(){
+  const last = new Map();
+  for(const e of liveEvents){
+    if(e.direction !== 'out' || tvQueueHidden(e.queue)) continue;
+    const cur = last.get(e.name);
+    if(cur === undefined || e.ts > cur) last.set(e.name, e.ts);
+  }
+  return last;
 }
 
 function renderTV(){
   if(!IS_TV) return;
   renderTVWeather();
-  renderTVQueues();
-  renderTVOnline();
-  renderTVStats();
+  renderTVStatusNote();
+  renderTVHero();
+  renderTVToday();
+  renderTVWho();
+  renderTVChart();
+  renderTVKpis();
 }
 
-function renderTVQueues(){
-  const el = document.getElementById('tvQueues');
-  const pill = document.getElementById('tvLivePill');
-  const pillText = document.getElementById('tvLiveText');
-  if(!liveConnected || !liveStatus || !liveStatus.queues){
-    el.innerHTML = '<div class="tv-no-live-queues">Waiting for local capture server...</div>';
-    pill.classList.remove('connected');
-    pillText.textContent = 'Not connected';
-    return;
-  }
-  pill.classList.add('connected');
-  pillText.textContent = 'Live';
-  const queues = liveStatus.queues.filter(q => q.total >= 2);
-  if(!queues.length){
-    el.innerHTML = '<div class="tv-no-live-queues">No active queues</div>';
-    return;
-  }
-  const activeKeys = calcQueueActiveKeys();
-  const queueCardsHtml = queues.map(q => {
-    const available = countAvailableForQueue(q, activeKeys);
-    return `
-    <div class="tv-qcard">
-      <div class="qname-tv">${q.description}</div>
-      <div class="tv-agents">
-        <span class="tv-ready ${available===0?'zero':''}">${available}</span>
-      </div>
-      <div class="tv-sub">Active</div>
-      ${q.answered_waittime > 0 ? `
-        <div class="tv-qdivider"></div>
-        <div class="tv-wait ${q.answered_waittime > 120 ? 'slow' : ''}">${fmtWait(q.answered_waittime)}</div>
-        <div class="tv-sub">Avg wait time</div>
-      ` : ''}
-    </div>`;
-  }).join('');
-
-  const callsHtml = liveCalls ? (() => {
-    const waiting = liveCalls.calls.filter(c => !c.answered).length;
-    const active = liveCalls.calls.filter(c => c.answered).length;
-    return `
-    <div class="tv-qcard">
-      <div class="qname-tv">Waiting</div>
-      <div class="tv-agents"><span class="tv-ready ${waiting===0?'zero':''}">${waiting}</span></div>
-      <div class="tv-sub">Calls in queue</div>
-    </div>
-    <div class="tv-qcard">
-      <div class="qname-tv">Active</div>
-      <div class="tv-agents"><span class="tv-ready ${active===0?'zero':''}">${active}</span></div>
-      <div class="tv-sub">Calls in progress</div>
-    </div>`;
-  })() : '';
-
-  el.innerHTML = queueCardsHtml + callsHtml;
-}
-
-function renderTVOnline(){
-  const el = document.getElementById('tvOnlineList');
-  const today = liveEvents.filter(e => isToday(e.ts) && (e.direction==='in' || e.direction==='out'));
-  const agentState = new Map();
-  for(const e of today.sort((a,b) => a.ts - b.ts)) agentState.set(e.name, e.direction);
-  const online = Array.from(agentState.entries()).filter(([_,d]) => d==='in').map(([n]) => n).sort();
-
-  const onCallNames = new Set((liveCalls ? liveCalls.agents : []).filter(a => a.onCall).map(a => a.name));
-
-  let agentsHtml;
+function renderTVStatusNote(){
+  const el = document.getElementById('tvLiveText');
+  if(!el) return;
+  // A wallboard showing frozen numbers is worse than one showing an error, so
+  // say so plainly once the capture server has gone quiet.
   if(!liveConnected){
-    agentsHtml = '<div class="tv-no-data">Capture server not connected</div>';
-  } else if(!online.length){
-    agentsHtml = '<div class="tv-no-data">No agents currently online</div>';
+    el.textContent = 'Capture server not connected';
+    el.classList.add('stale');
+    return;
+  }
+  const age = liveStatus && liveStatus.ts ? Date.now() - liveStatus.ts : null;
+  if(age !== null && age > 120000){
+    el.textContent = 'Data is ' + tvFmtSince(age) + ' old';
+    el.classList.add('stale');
   } else {
-    agentsHtml = online.map(name => `
-      <div class="tv-agent-row"><span class="adot ${onCallNames.has(name)?'busy':''}"></span><span>${name}</span>${onCallNames.has(name) ? '<span class="on-call-tag">on a call</span>' : ''}</div>
-    `).join('');
+    el.textContent = 'Live';
+    el.classList.remove('stale');
   }
+}
 
-  // Today's activity stats
-  const todayAll = liveEvents.filter(e => isToday(e.ts));
-  const uniqueActive = new Set(todayAll.map(e => e.name)).size;
-  const loginsToday  = todayAll.filter(e => e.direction === 'in').length;
-  const activityHtml = liveConnected ? `
-    <div class="tv-activity-row">
-      <div class="tv-stat-item">
-        <span class="tv-stat-num">${uniqueActive}</span>
-        <span class="tv-stat-lbl">Agents active today</span>
-      </div>
-      <div class="tv-stat-item">
-        <span class="tv-stat-num">${loginsToday}</span>
-        <span class="tv-stat-lbl">Queue logins today</span>
+/* ---------- waiting hero ----------
+ * Colour escalates with the queue: clear/1 waiting green, 2 amber, 3+ red.
+ */
+function renderTVHero(){
+  const el = document.getElementById('tvHero');
+  if(!el) return;
+  const waiting = liveCalls ? liveCalls.calls.filter(c => !c.answered && !tvQueueHidden(c.queue)) : [];
+  const count = waiting.length;
+  const longest = waiting.length ? Math.max(...waiting.map(c => c.seconds)) : 0;
+
+  const color = count === 0 ? 'var(--tvgreen)'
+              : count === 1 ? 'var(--tvgreen)'
+              : count === 2 ? 'var(--tvamber)'
+              : 'var(--tvred)';
+  const label = count === 0 ? 'Queue is clear'
+              : count === 1 ? 'Caller waiting'
+              : 'Callers waiting';
+  const sub = count === 0 ? 'Nobody is holding right now' : 'Longest hold ' + fmtWait(longest);
+
+  // Avg + longest wait today, from the answered calls the capture server has
+  // already stored for today — Unifon's own numbers, not inferred.
+  const todayKey = fmtDateDMY(Date.now());
+  let avgToday = '—', longestToday = '—';
+  const visibleQueues = (liveStatus && liveStatus.queues ? liveStatus.queues : []).filter(q => !tvQueueHidden(q.description));
+  if(visibleQueues.length){
+    const waits = visibleQueues.map(q => q.answered_waittime || 0).filter(w => w > 0);
+    if(waits.length) avgToday = fmtWait(waits.reduce((a,b)=>a+b,0)/waits.length);
+  }
+  if(longest > 0) longestToday = fmtWait(longest);
+
+  el.style.setProperty('--hero-c', color);
+  el.innerHTML = `
+    <div class="tvhero-main">
+      <div class="tvhero-num">${count}</div>
+      <div class="tvhero-txt">
+        <div class="tvhero-lbl">${label}</div>
+        <div class="tvhero-sub">${sub}</div>
       </div>
     </div>
-  ` : '';
-
-  el.innerHTML = `
-    ${agentsHtml}
-    ${liveConnected ? `<div class="tv-col-divider"></div>${activityHtml}` : ''}
-    <div class="tv-col-divider"></div>
-    <div class="tv-chart-label">Avg wait time — today</div>
-    ${renderSVGSparkline(waitTimeSamples)}
-  `;
+    <div class="tvhero-side">
+      <div class="tvhs"><span class="tvhs-v">${avgToday}</span><span class="tvhs-l">Avg wait now</span></div>
+      <div class="tvhs"><span class="tvhs-v">${longestToday}</span><span class="tvhs-l">Longest holding</span></div>
+    </div>`;
 }
 
-function renderTVStats(){
-  const el = document.getElementById('tvStatsContent');
+function renderTVToday(){
+  const el = document.getElementById('tvToday');
+  if(!el) return;
+  const answered = liveEvents.length || liveCalls ? tvAnsweredToday() : null;
+  const rate = tvAnswerRateToday();
+  el.innerHTML = `
+    <div class="tvhero-main">
+      <div class="tvhero-num" style="color:var(--tvink1); font-size:clamp(30px,4.6vh,58px)">${answered === null ? '—' : answered}</div>
+      <div class="tvhero-txt">
+        <div class="tvhero-lbl">Answered today</div>
+        <div class="tvhero-sub">${rate === null ? 'Awaiting report data' : rate.toFixed(0) + '% answer rate'}</div>
+      </div>
+    </div>`;
+}
+
+// Today's team totals come from capture-server's stored MainReport snapshot
+// (report-main-daily.json, mirrored into ALL_TEAM_RECORDS by refreshLiveReports).
+function tvTeamRecordToday(){
+  const key = fmtDateDMY(Date.now());
+  return ALL_TEAM_RECORDS.find(r => r.periodType === 'Day' && r.periodLabel === key) || null;
+}
+function tvAnsweredToday(){
+  const rec = tvTeamRecordToday();
+  return rec ? rec.answered : null;
+}
+function tvAnswerRateToday(){
+  const rec = tvTeamRecordToday();
+  if(!rec || !rec.totalCalls) return null;
+  return rec.answered / rec.totalCalls * 100;
+}
+
+/* ---------- on the phones ---------- */
+function renderTVWho(){
+  const listEl = document.getElementById('tvWhoList');
+  const countEl = document.getElementById('tvWhoCount');
+  if(!listEl) return;
+
   if(!liveConnected){
-    el.innerHTML = `
-      <div class="tv-section-label">Most calls answered<span class="tv-period-tag">this week</span></div>
-      <div class="tv-no-data">Waiting for local capture...</div>`;
+    listEl.innerHTML = '<div class="tv-empty">Waiting for capture server…</div>';
+    if(countEl) countEl.innerHTML = '';
     return;
   }
-  const data = computeCallsAnsweredThisWeek();
-  el.innerHTML = `
-    <div class="tv-section-label">Most calls answered<span class="tv-period-tag">this week</span></div>
-    ${data.length ? renderSVGCallBars(data) : '<div class="tv-no-data">No calls answered yet this week</div>'}
-  `;
+
+  const onCallNames = new Set((liveCalls ? liveCalls.agents : [])
+    .filter(a => a.onCall && !tvQueueHidden(a.queue))
+    .map(a => a.name));
+  tvTrackCallState(onCallNames);
+
+  // "On queue" = still logged in per today's events, same definition the
+  // wallboard uses, so a call or wrap-up doesn't drop someone off the list.
+  const activeKeys = calcQueueActiveKeys();
+  const onQueue = new Set();
+  for(const key of activeKeys){
+    const [name, queue] = key.split('||');
+    if(tvQueueHidden(queue) || hiddenAgents.includes(name)) continue;
+    onQueue.add(name);
+  }
+
+  const lastOff = tvLastLogoffTs();
+  const people = Array.from(tvKnownAgents()).map(name => {
+    const state = onCallNames.has(name) ? 'call' : onQueue.has(name) ? 'free' : 'off';
+    return { name, state };
+  });
+
+  const ORDER = { free:0, call:1, off:2 };
+  people.sort((a,b) => (ORDER[a.state] - ORDER[b.state]) || a.name.localeCompare(b.name));
+
+  const n = s => people.filter(p => p.state === s).length;
+  if(countEl) countEl.innerHTML = `
+    <span class="tvwc"><b style="color:var(--tvgreen)">${n('free')}</b>available</span>
+    <span class="tvwc"><b style="color:var(--tvamber)">${n('call')}</b>on a call</span>
+    <span class="tvwc"><b style="color:var(--tvred)">${n('off')}</b>off queue</span>`;
+
+  if(!people.length){
+    listEl.innerHTML = '<div class="tv-empty">No agents seen on queue yet</div>';
+    return;
+  }
+
+  listEl.innerHTML = people.map(p => {
+    const c = tvColorFor(p.name);
+    let badge;
+    if(p.state === 'call'){
+      const since = tvCallSince.get(p.name);
+      const t = since ? `<span class="tvtimer">${tvFmtSince(Date.now()-since)}</span>` : '';
+      badge = `${t}<span class="tvbadge busy"><i></i>On a call</span>`;
+    } else if(p.state === 'off'){
+      const off = lastOff.get(p.name);
+      const t = off ? `<span class="tvtimer">off ${tvFmtSince(Date.now()-off)}</span>` : '';
+      badge = `${t}<span class="tvbadge gone"><i></i>Off queue</span>`;
+    } else {
+      badge = `<span class="tvbadge free"><i></i>Available</span>`;
+    }
+    const cls = p.state === 'call' ? 'oncall' : p.state === 'off' ? 'offqueue' : '';
+    return `
+      <div class="tvprow ${cls}">
+        <span class="tvav" style="background:${c}">${tvInitials(p.name)}</span>
+        <span class="tvpname">${p.name}</span>
+        <span class="tvpstat">${badge}</span>
+      </div>`;
+  }).join('');
 }
+
+/* ---------- weekly chart ---------- */
+function renderTVChart(){
+  const yEl = document.getElementById('tvYAxis');
+  const plotEl = document.getElementById('tvPlot');
+  const barsEl = document.getElementById('tvBars');
+  const namesEl = document.getElementById('tvNames');
+  const noteEl = document.getElementById('tvChartNote');
+  if(!barsEl) return;
+
+  const data = computeCallsAnsweredThisWeek();
+  if(noteEl) noteEl.textContent = data.length ? 'calls · avg duration · logoffs' : '';
+
+  if(!data.length){
+    yEl.innerHTML = '';
+    barsEl.innerHTML = '';
+    plotEl.querySelectorAll('.tvgrid').forEach(g => g.remove());
+    namesEl.innerHTML = '<div class="tvnames-pad"></div><div class="tv-empty">No calls answered yet this week</div>';
+    return;
+  }
+
+  // Round the axis up to a clean 25-step ceiling, like the Zendesk chart.
+  const max = Math.max(...data.map(d => d.count));
+  const step = max <= 25 ? 5 : 25;
+  const ceilVal = Math.max(step, Math.ceil(max/step)*step);
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(ceilVal*f));
+
+  yEl.innerHTML = ticks.map(t =>
+    `<span class="tvytick" style="top:${100-(t/ceilVal*100)}%">${t}</span>`).join('');
+  plotEl.querySelectorAll('.tvgrid').forEach(g => g.remove());
+  plotEl.insertAdjacentHTML('afterbegin', ticks.map(t =>
+    `<div class="tvgrid" style="top:${100-(t/ceilVal*100)}%"></div>`).join(''));
+
+  barsEl.innerHTML = data.map(d => `
+    <div class="tvbcol">
+      <div class="tvbval">${d.count}</div>
+      <div class="tvbar" style="height:${d.count/ceilVal*100}%; background:${tvColorFor(d.name)}"></div>
+    </div>`).join('');
+
+  namesEl.innerHTML = '<div class="tvnames-pad"></div>' + data.map(d => {
+    const c = tvColorFor(d.name);
+    const dur = d.avgDurationMin != null ? fmtDur(d.avgDurationMin*60) : '—';
+    return `
+      <div class="tvncol">
+        <div class="tvnname" style="color:${c}">${d.name.split(/\s+/)[0]}</div>
+        <div class="tvnstats">
+          <div class="tvnstat">${TV_ICON.calls(c)}${d.count}</div>
+          <div class="tvnstat">${TV_ICON.dur(c)}${dur}</div>
+          <div class="tvnstat">${TV_ICON.off(c)}${d.logoffs}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+/* ---------- weekly KPIs ---------- */
+function renderTVKpis(){
+  const el = document.getElementById('tvKpis');
+  if(!el) return;
+  const data = computeCallsAnsweredThisWeek();
+  const totalCalls = data.reduce((s,d) => s + d.count, 0);
+
+  // Weighted by each agent's call count, so a low-volume agent's long calls
+  // don't skew the team average.
+  let talkNum = 0, talkDen = 0;
+  for(const d of data){
+    if(d.avgDurationMin == null) continue;
+    talkNum += d.avgDurationMin * d.count;
+    talkDen += d.count;
+  }
+  const avgTalk = talkDen > 0 ? talkNum/talkDen : null;
+
+  // Answer rate for the week from the stored MainReport days.
+  const monday = mondayOf(Date.now()).getTime();
+  let wkAnswered = 0, wkTotal = 0;
+  for(const r of ALL_TEAM_RECORDS){
+    if(r.periodType !== 'Day') continue;
+    const [d,m,y] = String(r.periodLabel).split('.').map(Number);
+    if(!d || !m || !y) continue;
+    const ts = new Date(y, m-1, d).getTime();
+    if(ts < monday) continue;
+    wkAnswered += r.answered || 0;
+    wkTotal += r.totalCalls || 0;
+  }
+  const rate = wkTotal > 0 ? wkAnswered/wkTotal*100 : null;
+
+  const kpis = [
+    { v: totalCalls || '—', l: 'Calls answered this week' },
+    { v: rate === null ? '—' : rate.toFixed(0)+'%', l: 'Answer rate this week', cls: rate !== null ? 'good' : '' },
+    { v: avgTalk === null ? '—' : fmtDur(avgTalk*60), l: 'Avg handle time this week' },
+  ];
+  el.innerHTML = kpis.map(k =>
+    `<div class="tvkpi"><div class="tvkval ${k.cls||''}">${k.v}</div><div class="tvklbl">${k.l}</div></div>`).join('');
+}
+
 
 /* ---------- init ---------- */
 (async function init(){
