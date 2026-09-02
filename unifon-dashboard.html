@@ -5,7 +5,8 @@
 <title>Munu — Unifon Agent Performance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600&family=Fira+Sans:wght@700;900&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf-autotable.min.js"></script>
 <style>
   :root{
     --navy:#000743; --navy-hover:#002875; --lightblue:#D6F3FF; --white:#F9FBFF; --foreground:#0D101A;
@@ -371,13 +372,14 @@
   <div class="tabpanel" id="panel-reports" style="display:none;">
 
     <div class="card">
-      <div class="drop" id="drop">
-        <input type="file" id="fileInput" multiple accept=".xlsx">
-        <div class="lbl">Drop Unifon exports here, or click to choose files</div>
-        <div class="lbl2">Accepts "agents-report", "main-number-report" and "calls-report" .xlsx files — day, week, month or custom range</div>
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <div>
+          <div class="lbl">Live report data</div>
+          <div class="lbl2">Pulled automatically from capture-server's own daily snapshots — no exports to download or upload.</div>
+        </div>
+        <button class="btn ghost small" id="refreshReportsBtn" onclick="refreshLiveReports(true)">Refresh now</button>
       </div>
-      <div class="filelist" id="fileList"></div>
-      <div id="storageNote" style="font-size:11px; color:var(--grey-3); margin-top:8px;"></div>
+      <div id="liveReportsStatus" style="font-size:11px; color:var(--grey-3); margin-top:10px;">Not yet loaded.</div>
     </div>
 
     <div id="app" style="display:none;">
@@ -396,6 +398,7 @@
           <button class="btn ghost small" id="copyTableBtn" onclick="copyTable()">Copy table</button>
           <span class="copy-feedback" id="copyFeedback">Copied!</span>
           <button class="btn small" onclick="generateReport()">Generate report</button>
+          <button class="btn small" id="downloadPdfBtn" onclick="downloadReportPDF()">Download PDF</button>
         </div>
       </div>
       <div class="filter-row">
@@ -626,111 +629,6 @@ function granularityOf(periodType, spanDays){
   return 'Monthly';
 }
 
-/* ---------- parse a workbook ---------- */
-function parseWorkbook(name, wb){
-  const sheetName = wb.SheetNames.includes('data') ? 'data' : wb.SheetNames[0];
-  const ws = wb.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:false});
-  if(rows.length<3) return {agentRecords:[], teamRecords:[]};
-
-  const headerRow = rows[1].map(x => x===null? '' : String(x));
-  const isAgentReport = headerRow.some(h => h.trim()==='Navn');
-
-  let yearHint = new Date().getFullYear();
-  for(const r of rows){
-    if(r && r[0]){
-      const m = String(r[0]).match(/\.(\d{4})/);
-      if(m){ yearHint = parseInt(m[1]); break; }
-    }
-  }
-
-  const agentRecords = [];
-  const teamRecords = [];
-
-  if(isAgentReport){
-    let periodLabel=null, periodType=null, queue=null, topRangeLabel=null;
-    for(let i=2;i<rows.length;i++){
-      const r = rows[i];
-      if(!r || r.every(c=>c===null)) continue;
-      const label = r[0]!==null? String(r[0]).trim() : null;
-      const navn = r[1]!==null? String(r[1]).trim() : null;
-
-      if(navn){
-        if(label) queue = label;
-        if(periodType==='Range' || periodType==='Month' || periodType==='Day'){
-          const range = extractRangeGuess(periodLabel, yearHint);
-          const spanDays = spanDaysOf(range);
-          agentRecords.push({
-            periodLabel, periodType, dateGuess: range.start, spanDays,
-            granularity: granularityOf(periodType, spanDays),
-            queue: queue||'Unknown', name: navn,
-            answered: toNum(r[3]),
-            avgTalk: parseDur(r[5]),
-            totalTalk: parseDur(r[7]),
-            avgWaitAnswered: parseDur(r[8]),
-            avgWaitMissed: parseDur(r[10]),
-            picked: toNum(r[12]),
-            timeouts: toNum(r[13]),
-            transferred: toNum(r[14]),
-            available: parseDur(r[15]),
-            sourceFile: name
-          });
-        }
-      } else if(label){
-        const type = classifyAggLabel(label);
-        if(type==='Range'){ periodLabel=cleanLabel(label); periodType='Range'; queue=null; if(!topRangeLabel) topRangeLabel=periodLabel; }
-        else if(type==='Month'){ periodLabel=label.replace(/^Month/,'').trim(); periodType='Month'; queue=null; }
-        else if(type==='Day'){ periodLabel=label.replace(/^Dag/,'').trim(); periodType='Day'; queue=null; }
-        else if(type==='Hour'){ periodType='Hour'; }
-      }
-    }
-
-    // A custom date range that crosses a month boundary gets split by Unifon into
-    // several "Month..." sub-sections (e.g. "29.06 - 30.06" + "01.07 - 05.07"), each
-    // only covering part of the range — so no single period ever shows the agent's
-    // total for the whole requested range. Synthesize that merged total here.
-    // Skip entirely if the file already has real per-agent rows directly under the
-    // range header (Unifon sometimes includes those) — trust those totals as-is
-    // rather than re-deriving (and double-counting) them from the sub-chunks.
-    const hasRealRangeRows = agentRecords.some(r => r.periodType === 'Range');
-    const subPeriodRows = agentRecords.filter(r => r.periodType === 'Month' || r.periodType === 'Day');
-    const subKeys = new Set(subPeriodRows.map(r => r.periodType+'||'+r.periodLabel));
-    if(topRangeLabel && !hasRealRangeRows && subKeys.size > 1){
-      const range = extractRangeGuess(topRangeLabel, yearHint);
-      const spanDays = spanDaysOf(range);
-      const granularity = granularityOf('Range', spanDays);
-      for(const r of subPeriodRows){
-        agentRecords.push({...r, periodLabel: topRangeLabel, periodType: 'Range', dateGuess: range.start, spanDays, granularity});
-      }
-    }
-  } else {
-    // main-number-report: queue-agnostic totals for Range and Month rows only
-    for(let i=2;i<rows.length;i++){
-      const r = rows[i];
-      if(!r || r.every(c=>c===null)) continue;
-      const label = r[0]!==null? String(r[0]).trim() : null;
-      if(!label) continue;
-      const type = classifyAggLabel(label);
-      if(type==='Range' || type==='Month'){
-        const cleaned = type==='Range' ? cleanLabel(label) : label.replace(/^Month/,'').trim();
-        const range = extractRangeGuess(cleaned, yearHint);
-        teamRecords.push({
-          periodLabel: cleaned, periodType: type, dateGuess: range.start,
-          answered: toNum(r[1]), missed: toNum(r[2]),
-          callbackRequests: toNum(r[4]),
-          totalCalls: toNum(r[5]),
-          avgWaitOverall: parseDur(r[6]),
-          overKpi: toNum(r[8]),
-          totalTalk: parseDur(r[11]),
-          avgWaitMissed: parseDur(r[14]),
-          sourceFile: name
-        });
-      }
-    }
-  }
-  return {agentRecords, teamRecords};
-}
-
 /* ---------- aggregation across queues within a file ---------- */
 function aggregateAgentRecords(raw){
   const map = new Map();
@@ -804,93 +702,238 @@ function aggregateQueueRecords(raw){
   });
 }
 
-/* ---------- parse a raw "calls-report" call log ----------
-   One row per call: Dato og tid | Status | Innringer | Ventetid | Samtaletid | Kø | Agent.
-   We deliberately drop the caller number (Innringer) — it's not needed for agent stats
-   and there's no reason to persist customer phone numbers in browser storage.
-*/
-function isCallLogSheet(rows){
-  return rows.length>0 && rows[0] && String(rows[0][0]||'').trim()==='Dato og tid';
-}
-function parseCallTimestamp(s){
-  const m = String(s).trim().match(/(\d{2})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
-  if(!m) return null;
-  const [, d, mo, y, h, mi, se] = m;
-  return new Date(2000+parseInt(y), parseInt(mo)-1, parseInt(d), parseInt(h), parseInt(mi), parseInt(se));
-}
 function fmtDateDMY(ts){
   const d = new Date(ts);
   return String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+d.getFullYear();
 }
-function parseCallLog(name, rows){
-  const calls = [];
-  for(let i=1;i<rows.length;i++){
-    const r = rows[i];
-    if(!r || r[0]==null) continue;
-    const dt = parseCallTimestamp(r[0]);
-    if(!dt) continue;
-    calls.push({
-      ts: dt.getTime(),
-      dateKey: dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'),
-      status: r[1]!=null ? String(r[1]).trim() : '',
-      wait: parseDur(r[3]),
-      talk: parseDur(r[4]),
-      queue: r[5]!=null ? String(r[5]).trim() : 'Unknown',
-      agent: r[6]!=null ? String(r[6]).trim() : null,
-      sourceFile: name
-    });
-  }
-  return calls;
-}
-function aggregateCallRecords(calls){
-  // Missed calls carry no Agent (Unifon doesn't record who a missed call rang to),
-  // so only answered calls can be attributed to a specific agent.
-  const answered = calls.filter(c => c.status==='Besvart' && c.agent);
 
-  const dayMap = new Map();
-  for(const c of answered){
-    const key = c.dateKey+'||'+c.agent;
-    if(!dayMap.has(key)) dayMap.set(key, {dateKey:c.dateKey, name:c.agent, queues:new Set(), answered:0, totalTalk:0, maxTalk:0, totalWait:0, maxWait:0, sourceFile:c.sourceFile});
-    const a = dayMap.get(key);
-    a.queues.add(c.queue); a.answered+=1; a.totalTalk+=c.talk; a.maxTalk=Math.max(a.maxTalk,c.talk);
-    a.totalWait+=c.wait; a.maxWait=Math.max(a.maxWait,c.wait); a.sourceFile=c.sourceFile;
-  }
-  const dayRecords = Array.from(dayMap.values()).map(a=>{
-    const dt = new Date(a.dateKey+'T00:00:00');
-    return {
-      key: 'Day||'+a.dateKey+'||'+a.name,
-      periodType:'Day', periodLabel:a.dateKey, dateGuess: dt.getTime(), granularity:'Daily',
-      name:a.name, queues: Array.from(a.queues).join(', '),
-      answered:a.answered, avgTalk: a.totalTalk/a.answered, maxTalk:a.maxTalk, totalTalk:a.totalTalk,
-      avgWait: a.totalWait/a.answered, maxWait:a.maxWait,
-      sourceFile:a.sourceFile
+/* ---------- live report ingestion (replaces manual xlsx uploads) ----------
+ * Pulls capture-server's own daily report snapshots — report-agent-daily.json,
+ * report-main-daily.json, report-calls.json (see capture-server.js) — and
+ * expands each day into Day + Week + Month tagged raw records in the exact
+ * shape aggregateAgentRecords/aggregateQueueRecords already expect. That way
+ * the rest of the Reports tab (period selector, RAG flags, generateReport,
+ * downloadReportPDF) needs no changes — it just sees records, same as when
+ * they came from an uploaded file.
+ */
+function monthLabelFor(d){ return d.toLocaleDateString(undefined, {month:'long', year:'numeric'}); }
+function startOfMonthTs(d){ return new Date(d.getFullYear(), d.getMonth(), 1).getTime(); }
+function daysInMonthOf(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate(); }
+function startOfDay(d){ const x = new Date(d); x.setHours(0,0,0,0); return x; }
+
+// One AgentReport row (one queue+agent, one day) -> Day/Week/Month tagged
+// raw records. All the GraphQL field names below are Unifon's own, in the
+// same units (seconds) the rest of this file already assumes.
+function expandAgentDay(dayTs, rows){
+  const dayDate = new Date(dayTs);
+  const dayLabel = fmtDateDMY(dayTs);
+  const monday = mondayOf(dayTs);
+  const weekLabel = fmtWeekLabel(monday);
+  const monthLabel = monthLabelFor(dayDate);
+  const monthStart = startOfMonthTs(dayDate);
+  const monthSpan = daysInMonthOf(dayDate);
+  const out = [];
+  for(const r of rows){
+    if(!r.user_name) continue;
+    const base = {
+      queue: r.queue_name || 'Unknown',
+      name: r.user_name,
+      answered: r.queue_calls_answer || 0,
+      avgTalk: r.calltime_avg || 0,
+      totalTalk: r.calltime_sum || 0,
+      avgWaitAnswered: r.waittime_answered_avg || 0,
+      avgWaitMissed: r.waittime_notanswered_avg || 0,
+      picked: r.subtype_pickup || 0,
+      timeouts: r.outcome_timeout || 0,
+      transferred: r.subtype_transfer || 0,
+      available: r.readytime || 0,
+      sourceFile: 'Live capture',
     };
-  });
-
-  if(!answered.length) return dayRecords;
-
-  // Whole-range roll-up per agent, spanning every call in this particular upload.
-  const allTs = calls.map(c=>c.ts);
-  const minTs = Math.min(...allTs), maxTs = Math.max(...allTs);
-  const spanDays = Math.max(1, Math.round((maxTs-minTs)/86400000)+1);
-  const rangeLabel = fmtDateDMY(minTs)+' - '+fmtDateDMY(maxTs);
-  const rangeMap = new Map();
-  for(const c of answered){
-    if(!rangeMap.has(c.agent)) rangeMap.set(c.agent, {queues:new Set(), answered:0, totalTalk:0, maxTalk:0, totalWait:0, maxWait:0});
-    const a = rangeMap.get(c.agent);
-    a.queues.add(c.queue); a.answered+=1; a.totalTalk+=c.talk; a.maxTalk=Math.max(a.maxTalk,c.talk);
-    a.totalWait+=c.wait; a.maxWait=Math.max(a.maxWait,c.wait);
+    out.push({...base, periodLabel:dayLabel, periodType:'Day', dateGuess:dayTs, spanDays:1, granularity:'Daily'});
+    out.push({...base, periodLabel:weekLabel, periodType:'Range', dateGuess:monday.getTime(), spanDays:7, granularity:granularityOf('Range',7)});
+    out.push({...base, periodLabel:monthLabel, periodType:'Month', dateGuess:monthStart, spanDays:monthSpan, granularity:granularityOf('Month',monthSpan)});
   }
-  const rangeRecords = Array.from(rangeMap.entries()).map(([name,a])=>({
-    key: 'Range||'+rangeLabel+'||'+name,
-    periodType:'Range', periodLabel:rangeLabel, dateGuess:minTs, granularity:granularityOf('Range', spanDays),
-    name, queues:Array.from(a.queues).join(', '),
-    answered:a.answered, avgTalk:a.totalTalk/a.answered, maxTalk:a.maxTalk, totalTalk:a.totalTalk,
-    avgWait:a.totalWait/a.answered, maxWait:a.maxWait,
-    sourceFile: answered[0].sourceFile
-  }));
+  return out;
+}
 
-  return [...dayRecords, ...rangeRecords];
+// One MainReport row (one day, team-wide) -> Day/Week/Month tagged raw
+// records, then summed per period the same way aggregateAgentRecords sums
+// per-queue rows — just at team level instead of per-agent.
+function expandTeamDay(dayTs, mainRow){
+  if(!mainRow) return [];
+  const dayDate = new Date(dayTs);
+  const dayLabel = fmtDateDMY(dayTs);
+  const monday = mondayOf(dayTs);
+  const weekLabel = fmtWeekLabel(monday);
+  const monthLabel = monthLabelFor(dayDate);
+  const monthStart = startOfMonthTs(dayDate);
+  const base = {
+    answered: mainRow.calls_answer || 0,
+    missed: mainRow.calls_noanswer || 0,
+    totalCalls: mainRow.calls_total || 0,
+    callbackRequests: mainRow.calls_callback_request || 0,
+    overKpi: mainRow.calls_wait_markhigh || 0,
+    totalTalk: mainRow.calltime_sum || 0,
+    avgWaitOverall: mainRow.waittime_avg || 0,
+    avgWaitMissed: mainRow.waittime_notanswered_avg || 0,
+    sourceFile: 'Live capture',
+  };
+  return [
+    {...base, periodLabel:dayLabel, periodType:'Day', dateGuess:dayTs},
+    {...base, periodLabel:weekLabel, periodType:'Range', dateGuess:monday.getTime()},
+    {...base, periodLabel:monthLabel, periodType:'Month', dateGuess:monthStart},
+  ];
+}
+function aggregateTeamRecords(raw){
+  const map = new Map();
+  for(const r of raw){
+    const key = r.periodType+'||'+r.periodLabel;
+    if(!map.has(key)){
+      map.set(key, {
+        periodLabel:r.periodLabel, periodType:r.periodType, dateGuess:r.dateGuess,
+        answered:0, missed:0, totalCalls:0, callbackRequests:0, overKpi:0, totalTalk:0,
+        waitNum:0, waitDen:0, waitMissedNum:0, waitMissedDen:0, sourceFile:r.sourceFile,
+      });
+    }
+    const t = map.get(key);
+    t.answered += r.answered; t.missed += r.missed; t.totalCalls += r.totalCalls;
+    t.callbackRequests += r.callbackRequests; t.overKpi += r.overKpi; t.totalTalk += r.totalTalk;
+    t.waitNum += r.avgWaitOverall * r.totalCalls; t.waitDen += r.totalCalls;
+    t.waitMissedNum += r.avgWaitMissed * r.missed; t.waitMissedDen += r.missed;
+  }
+  return Array.from(map.values()).map(t=>({
+    periodLabel:t.periodLabel, periodType:t.periodType, dateGuess:t.dateGuess,
+    answered:t.answered, missed:t.missed, totalCalls:t.totalCalls,
+    callbackRequests:t.callbackRequests, overKpi:t.overKpi, totalTalk:t.totalTalk,
+    avgWaitOverall: t.waitDen>0 ? t.waitNum/t.waitDen : 0,
+    avgWaitMissed: t.waitMissedDen>0 ? t.waitMissedNum/t.waitMissedDen : 0,
+    sourceFile:t.sourceFile,
+  }));
+}
+
+// report-calls.json is a flat {id: QueueList row} object spanning up to 120
+// days. Buckets every answered call by its actual day, sums to Day-level
+// per-agent totals, then rolls those up into Week/Month the same way — sum
+// for additive fields, max (not sum) for maxTalk/maxWait.
+function buildLiveCallRecords(callsById){
+  const dayAgg = new Map(); // "dayTs|name" -> totals
+  for(const key of Object.keys(callsById)){
+    const c = callsById[key];
+    if(!c.date_answer || !c.user_name) continue; // only answered calls are attributable to an agent
+    const ts = new Date(c.date_answer).getTime();
+    if(!ts || isNaN(ts)) continue;
+    const dayTs = startOfDay(new Date(ts)).getTime();
+    const mapKey = dayTs+'|'+c.user_name;
+    if(!dayAgg.has(mapKey)) dayAgg.set(mapKey, {dayTs, name:c.user_name, queues:new Set(), answered:0, totalTalk:0, maxTalk:0, totalWait:0, maxWait:0});
+    const a = dayAgg.get(mapKey);
+    const talk = c.calltime || 0, wait = c.waittime_answered || 0;
+    a.queues.add(c.queue_name || 'Unknown'); a.answered += 1;
+    a.totalTalk += talk; a.maxTalk = Math.max(a.maxTalk, talk);
+    a.totalWait += wait; a.maxWait = Math.max(a.maxWait, wait);
+  }
+
+  const expanded = [];
+  for(const a of dayAgg.values()){
+    const dayDate = new Date(a.dayTs);
+    const dayLabel = fmtDateDMY(a.dayTs);
+    const monday = mondayOf(a.dayTs);
+    const weekLabel = fmtWeekLabel(monday);
+    const monthLabel = monthLabelFor(dayDate);
+    const monthStart = startOfMonthTs(dayDate);
+    const base = { name:a.name, queues:a.queues, answered:a.answered, totalTalk:a.totalTalk, maxTalk:a.maxTalk, totalWait:a.totalWait, maxWait:a.maxWait };
+    expanded.push({...base, periodType:'Day', periodLabel:dayLabel, dateGuess:a.dayTs, granularity:'Daily'});
+    expanded.push({...base, periodType:'Range', periodLabel:weekLabel, dateGuess:monday.getTime(), granularity:granularityOf('Range',7)});
+    expanded.push({...base, periodType:'Month', periodLabel:monthLabel, dateGuess:monthStart, granularity:granularityOf('Month', daysInMonthOf(dayDate))});
+  }
+
+  const merged = new Map();
+  for(const r of expanded){
+    const key = r.periodType+'||'+r.periodLabel+'||'+r.name;
+    if(!merged.has(key)){
+      merged.set(key, {key, periodType:r.periodType, periodLabel:r.periodLabel, dateGuess:r.dateGuess, granularity:r.granularity,
+        name:r.name, queues:new Set(), answered:0, totalTalk:0, maxTalk:0, totalWait:0, maxWait:0});
+    }
+    const m = merged.get(key);
+    for(const q of r.queues) m.queues.add(q);
+    m.answered += r.answered; m.totalTalk += r.totalTalk; m.maxTalk = Math.max(m.maxTalk, r.maxTalk);
+    m.totalWait += r.totalWait; m.maxWait = Math.max(m.maxWait, r.maxWait);
+  }
+
+  return Array.from(merged.values()).map(m=>({
+    key:m.key, periodType:m.periodType, periodLabel:m.periodLabel, dateGuess:m.dateGuess, granularity:m.granularity,
+    name:m.name, queues:Array.from(m.queues).join(', '),
+    answered:m.answered, avgTalk: m.answered>0 ? m.totalTalk/m.answered : 0, maxTalk:m.maxTalk, totalTalk:m.totalTalk,
+    avgWait: m.answered>0 ? m.totalWait/m.answered : 0, maxWait:m.maxWait,
+    sourceFile:'Live capture',
+  }));
+}
+
+// Pulls the three live stores from capture-server and merges them into
+// ALL_RECORDS/ALL_QUEUE_RECORDS/ALL_TEAM_RECORDS/ALL_CALL_RECORDS, keyed the
+// same way manual uploads always were — so live data simply overwrites any
+// older entry for the same period+agent (or period, for team records), which
+// is what "live always wins" means in practice here.
+async function refreshLiveReports(manual){
+  const statusEl = document.getElementById('liveReportsStatus');
+  if(statusEl) statusEl.textContent = 'Refreshing from capture server...';
+  try{
+    const [agentDaily, mainDaily, calls] = await Promise.all([
+      fetch(liveUrl('report-agent-daily.json'), {cache:'no-store'}).then(r=>r.json()),
+      fetch(liveUrl('report-main-daily.json'), {cache:'no-store'}).then(r=>r.json()),
+      fetch(liveUrl('report-calls.json'), {cache:'no-store'}).then(r=>r.json()),
+    ]);
+
+    const rawAgent = [];
+    for(const dayLabel of Object.keys(agentDaily)){
+      const [d,m,y] = dayLabel.split('.').map(Number);
+      const dayTs = new Date(y, m-1, d).getTime();
+      rawAgent.push(...expandAgentDay(dayTs, agentDaily[dayLabel]));
+    }
+    const rawTeam = [];
+    for(const dayLabel of Object.keys(mainDaily)){
+      const [d,m,y] = dayLabel.split('.').map(Number);
+      const dayTs = new Date(y, m-1, d).getTime();
+      rawTeam.push(...expandTeamDay(dayTs, mainDaily[dayLabel]));
+    }
+
+    if(rawAgent.length){
+      const agg = aggregateAgentRecords(rawAgent);
+      const map = new Map(ALL_RECORDS.map(r=>[r.key,r]));
+      for(const a of agg) map.set(a.key, a);
+      ALL_RECORDS = Array.from(map.values());
+      await saveStore(ALL_RECORDS);
+
+      const qagg = aggregateQueueRecords(rawAgent);
+      const qmap = new Map(ALL_QUEUE_RECORDS.map(r=>[r.key,r]));
+      for(const q of qagg) qmap.set(q.key, q);
+      ALL_QUEUE_RECORDS = Array.from(qmap.values());
+      await saveQueueStore(ALL_QUEUE_RECORDS);
+    }
+
+    if(rawTeam.length){
+      const tagg = aggregateTeamRecords(rawTeam);
+      const tmap = new Map(ALL_TEAM_RECORDS.map(r=>[r.periodType+'||'+r.periodLabel, r]));
+      for(const t of tagg) tmap.set(t.periodType+'||'+t.periodLabel, t);
+      ALL_TEAM_RECORDS = Array.from(tmap.values());
+      await saveTeamStore(ALL_TEAM_RECORDS);
+    }
+
+    const callRecords = buildLiveCallRecords(calls);
+    if(callRecords.length){
+      const cmap = new Map(ALL_CALL_RECORDS.map(r=>[r.key,r]));
+      for(const c of callRecords) cmap.set(c.key, c);
+      ALL_CALL_RECORDS = Array.from(cmap.values());
+      await saveCallStore(ALL_CALL_RECORDS);
+    }
+
+    if(statusEl) statusEl.textContent = `Last refreshed ${new Date().toLocaleTimeString()} — ${Object.keys(agentDaily).length} day(s) of agent data, ${Object.keys(calls).length} calls in the log.`;
+    render();
+    if(manual) showToast('Refreshed from live capture');
+  } catch(err){
+    console.error('refreshLiveReports failed:', err);
+    if(statusEl) statusEl.textContent = 'Refresh failed — ' + err.message;
+    if(manual) showToast('Could not refresh from capture server');
+  }
 }
 
 /* ---------- storage ----------
@@ -954,13 +997,6 @@ async function loadStore(){
 async function saveStore(records){
   await storageSet('unifon-agent-records', JSON.stringify(records));
 }
-async function loadFiles(){
-  const v = await storageGet('unifon-files');
-  return v ? JSON.parse(v) : [];
-}
-async function saveFiles(files){
-  await storageSet('unifon-files', JSON.stringify(files));
-}
 async function loadQueueStore(){
   const v = await storageGet('unifon-queue-records');
   return v ? JSON.parse(v) : [];
@@ -987,8 +1023,7 @@ async function saveCallStore(records){
 let ALL_RECORDS = [];        // aggregated per-agent-per-period records, upserted by key
 let ALL_QUEUE_RECORDS = [];  // aggregated per-queue-per-period records
 let ALL_TEAM_RECORDS = [];   // team-level records from main-number-report, upserted by period key
-let ALL_CALL_RECORDS = [];   // per-agent-per-day (+ whole-range) records built from raw calls-report logs
-let INGESTED_FILES = [];
+let ALL_CALL_RECORDS = [];   // per-agent-per-day (+ per-week/month) records built from the live call log
 let sortKey = localStorage.getItem('unifon-sort-key') || 'answerRate';
 let sortDir = parseInt(localStorage.getItem('unifon-sort-dir') || '1');
 let agentSearchVal = '';
@@ -999,60 +1034,6 @@ function showToast(msg){
   const t=document.getElementById('toast');
   t.textContent=msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 2400);
-}
-
-async function ingestFile(file){
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, {type:'array'});
-  const sheetName = wb.SheetNames.includes('data') ? 'data' : wb.SheetNames[0];
-  const probeRows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:false});
-
-  const loaded = [];
-
-  if(isCallLogSheet(probeRows)){
-    const calls = parseCallLog(file.name, probeRows);
-    const agg = aggregateCallRecords(calls);
-    const cmap = new Map(ALL_CALL_RECORDS.map(r=>[r.key,r]));
-    for(const a of agg) cmap.set(a.key, a);
-    ALL_CALL_RECORDS = Array.from(cmap.values());
-    await saveCallStore(ALL_CALL_RECORDS);
-    if(agg.length > 0) loaded.push(agg.length + ' agent-day call-log records');
-  } else {
-    const {agentRecords, teamRecords} = parseWorkbook(file.name, wb);
-
-    if(agentRecords.length > 0){
-      const agg = aggregateAgentRecords(agentRecords);
-      const map = new Map(ALL_RECORDS.map(r=>[r.key,r]));
-      for(const a of agg) map.set(a.key, a);
-      ALL_RECORDS = Array.from(map.values());
-      await saveStore(ALL_RECORDS);
-
-      const qagg = aggregateQueueRecords(agentRecords);
-      const qmap = new Map(ALL_QUEUE_RECORDS.map(r=>[r.key,r]));
-      for(const q of qagg) qmap.set(q.key, q);
-      ALL_QUEUE_RECORDS = Array.from(qmap.values());
-      await saveQueueStore(ALL_QUEUE_RECORDS);
-
-      loaded.push(agg.length + ' agent-period records');
-    }
-
-    if(teamRecords.length > 0){
-      const tmap = new Map(ALL_TEAM_RECORDS.map(r=>[r.periodType+'||'+r.periodLabel, r]));
-      for(const t of teamRecords) tmap.set(t.periodType+'||'+t.periodLabel, t);
-      ALL_TEAM_RECORDS = Array.from(tmap.values());
-      await saveTeamStore(ALL_TEAM_RECORDS);
-      loaded.push(teamRecords.length + ' team-period records');
-    }
-  }
-
-  if(loaded.length === 0){
-    showToast(file.name + ': no recognisable data found');
-    return;
-  }
-
-  INGESTED_FILES.push(file.name);
-  await saveFiles(INGESTED_FILES);
-  showToast(file.name + ': loaded ' + loaded.join(', '));
 }
 
 /* ---------- render ---------- */
@@ -1632,56 +1613,22 @@ document.getElementById('hideAgentBtn').addEventListener('click', hideSelectedAg
 document.getElementById('attendanceFromInput').addEventListener('change', e=>{ attendanceCustomFrom = e.target.value; renderAttendanceTable(); });
 document.getElementById('attendanceToInput').addEventListener('change', e=>{ attendanceCustomTo = e.target.value; renderAttendanceTable(); });
 
-const drop = document.getElementById('drop');
-const fileInput = document.getElementById('fileInput');
-drop.addEventListener('click', ()=>fileInput.click());
-drop.addEventListener('dragover', e=>{ e.preventDefault(); drop.classList.add('drag'); });
-drop.addEventListener('dragleave', ()=> drop.classList.remove('drag'));
-drop.addEventListener('drop', async e=>{
-  e.preventDefault(); drop.classList.remove('drag');
-  await handleFiles(e.dataTransfer.files);
-});
-fileInput.addEventListener('change', async e=>{
-  await handleFiles(e.target.files);
-  fileInput.value='';
-});
-
-async function handleFiles(fileList){
-  const files = Array.from(fileList).filter(f=>f.name.endsWith('.xlsx'));
-  for(const f of files){
-    try{ await ingestFile(f); }
-    catch(err){ console.error(err); showToast('Could not read '+f.name); }
-  }
-  renderFileChips();
-  render();
-}
-
-function renderFileChips(){
-  const el = document.getElementById('fileList');
-  el.innerHTML = INGESTED_FILES.map(f=>`<span class="chip">${f}</span>`).join('');
-}
-
 document.getElementById('resetBtn').addEventListener('click', async ()=>{
-  if(!confirm('Clear all loaded Unifon data? This cannot be undone.')) return;
-  ALL_RECORDS=[]; ALL_QUEUE_RECORDS=[]; ALL_TEAM_RECORDS=[]; ALL_CALL_RECORDS=[]; INGESTED_FILES=[];
-  await saveStore(ALL_RECORDS); await saveQueueStore(ALL_QUEUE_RECORDS); await saveTeamStore(ALL_TEAM_RECORDS); await saveCallStore(ALL_CALL_RECORDS); await saveFiles(INGESTED_FILES);
-  renderFileChips(); render();
+  if(!confirm('Clear all report data? Live data will repopulate on the next refresh; this only clears the cached copy.')) return;
+  ALL_RECORDS=[]; ALL_QUEUE_RECORDS=[]; ALL_TEAM_RECORDS=[]; ALL_CALL_RECORDS=[];
+  await saveStore(ALL_RECORDS); await saveQueueStore(ALL_QUEUE_RECORDS); await saveTeamStore(ALL_TEAM_RECORDS); await saveCallStore(ALL_CALL_RECORDS);
+  render();
 });
 
 /* ---------- report generation ---------- */
-function generateReport(){
-  const sel = document.getElementById('periodSelect');
-  if(!sel || !sel.value){ showToast('Select a period first'); return; }
-  const periods = periodsForGranularity(viewGranularity);
-  const periodInfo = periods.find(p=>p.key===sel.value) || periods[0];
-  if(!periodInfo){ showToast('No period selected'); return; }
-
+// Everything generateReport() and downloadReportPDF() both need for a given
+// period: team totals, queue breakdown, wrapup stats, flags, and the ranked
+// agent table (with each row's RAG flag color precomputed once here instead
+// of being recomputed by each renderer). Single source of truth for both the
+// print-friendly HTML report and the PDF export.
+function buildReportData(periodInfo, minVol, amberGap, redGap, absFloor){
   const rows = ALL_RECORDS.filter(r=>r.periodType+'||'+r.periodLabel===periodInfo.key);
-  if(!rows.length){ showToast('No data for this period'); return; }
-
-  const minVol  = parseInt(document.getElementById('minVol').value)||1;
-  const amberGap= parseFloat(document.getElementById('amberGap').value)||10;
-  const redGap  = parseFloat(document.getElementById('redGap').value)||20;
+  if(!rows.length) return null;
 
   // Team totals — prefer authoritative main-number-report data when available
   const teamRec = ALL_TEAM_RECORDS.find(r=>r.periodType+'||'+r.periodLabel===periodInfo.key);
@@ -1724,25 +1671,60 @@ function generateReport(){
     .map(([name, w]) => ({name, ...w, avgMinutes: w.totalMinutes / w.count}))
     .sort((a,b) => b.totalMinutes - a.totalMinutes);
 
-  // Flags + ranked agents
-  const absFloor = parseFloat(document.getElementById('absFloor').value) ?? 75;
+  // Flags + ranked agents. Each ranked row gets its rank (or null if under
+  // minVol) and its RAG dot color precomputed, so both renderers just read
+  // r.rank / r.flagColor instead of each reimplementing ragDot().
   const {flags, teamAvgAnswer} = computeFlags(rows, minVol, amberGap, redGap, absFloor);
   const ranked = [...rows].sort((a,b)=>{
     if(a.answerRate==null) return 1;
     if(b.answerRate==null) return -1;
     return b.answerRate - a.answerRate;
+  }).map((r,i)=>{
+    let flagColor = '#C9D2E0';
+    if(r.attempts>=minVol){
+      const gap=(teamAvgAnswer||0)-r.answerRate;
+      if(gap>=redGap) flagColor = '#CF2141';
+      else if(gap>=amberGap) flagColor = '#F6C34A';
+      else flagColor = '#008447';
+    }
+    return {...r, rank: r.attempts>=minVol ? i+1 : null, flagColor};
   });
 
   const today    = new Date();
   const todayStr = String(today.getDate()).padStart(2,'0')+'.'+String(today.getMonth()+1).padStart(2,'0')+'.'+today.getFullYear();
 
-  function ragDot(r){
-    if(r.attempts<minVol) return '#C9D2E0';
-    const gap=(teamAvgAnswer||0)-r.answerRate;
-    if(gap>=redGap) return '#CF2141';
-    if(gap>=amberGap) return '#F6C34A';
-    return '#008447';
-  }
+  return {
+    periodInfo, todayStr, minVol,
+    teamAnswered, teamMissed, teamTotal, teamAnswerRate, teamAvgTalk, teamAvgWait,
+    overKpiPct, callbackReqs, avgAbandonWait, avgQueueWait,
+    qrows, wrapupRows, flags, ranked,
+  };
+}
+
+function currentReportPeriodAndThresholds(){
+  const sel = document.getElementById('periodSelect');
+  if(!sel || !sel.value){ showToast('Select a period first'); return null; }
+  const periods = periodsForGranularity(viewGranularity);
+  const periodInfo = periods.find(p=>p.key===sel.value) || periods[0];
+  if(!periodInfo){ showToast('No period selected'); return null; }
+  const minVol   = parseInt(document.getElementById('minVol').value)||1;
+  const amberGap = parseFloat(document.getElementById('amberGap').value)||10;
+  const redGap   = parseFloat(document.getElementById('redGap').value)||20;
+  const absFloor = parseFloat(document.getElementById('absFloor').value) ?? 75;
+  return { periodInfo, minVol, amberGap, redGap, absFloor };
+}
+
+function generateReport(){
+  const ctx = currentReportPeriodAndThresholds();
+  if(!ctx) return;
+  const { periodInfo, minVol, amberGap, redGap, absFloor } = ctx;
+  const rep = buildReportData(periodInfo, minVol, amberGap, redGap, absFloor);
+  if(!rep){ showToast('No data for this period'); return; }
+  const {
+    teamAnswered, teamMissed, teamAnswerRate, teamAvgTalk, teamAvgWait,
+    overKpiPct, callbackReqs, avgAbandonWait, avgQueueWait,
+    qrows, wrapupRows, flags, ranked, todayStr,
+  } = rep;
 
   const html=`<!DOCTYPE html>
 <html lang="en">
@@ -1859,9 +1841,9 @@ ${wrapupRows.length>0?`
   <table>
     <thead><tr><th>#</th><th>Agent</th><th>Queues</th><th>Answered</th><th>Answer rate</th><th>Timeout rate</th><th>Avg handle time</th><th>Avg wait</th></tr></thead>
     <tbody>
-      ${ranked.map((r,i)=>`<tr>
-        <td style="color:var(--g3);font-size:11px;">${r.attempts>=minVol?i+1:'—'}</td>
-        <td style="font-weight:600"><span class="dot" style="background:${ragDot(r)}"></span>${r.name}</td>
+      ${ranked.map((r)=>`<tr>
+        <td style="color:var(--g3);font-size:11px;">${r.rank!=null?r.rank:'—'}</td>
+        <td style="font-weight:600"><span class="dot" style="background:${r.flagColor}"></span>${r.name}</td>
         <td style="color:var(--g3);font-size:11px;">${r.queues}</td>
         <td>${r.answered}</td>
         <td>${r.answerRate!=null?r.answerRate.toFixed(0)+'%':'—'}</td>
@@ -1886,6 +1868,134 @@ ${wrapupRows.length>0?`
   if(!win){ showToast('Pop-up blocked — allow pop-ups for this page to generate reports'); return; }
   win.document.write(html);
   win.document.close();
+}
+
+// Same data as generateReport() (via buildReportData), rendered as a directly
+// downloaded PDF instead of a print-friendly popup — for when you want an
+// actual file to attach or send rather than a browser "Save as PDF" step.
+// Styling mirrors the Munu Call Report Builder tool this replaces.
+function hexToRgb(hex){
+  const n = parseInt(hex.replace('#',''),16);
+  return [(n>>16)&255, (n>>8)&255, n&255];
+}
+
+function downloadReportPDF(){
+  if(!window.jspdf){ showToast('PDF library did not load — check your connection and try again'); return; }
+  const ctx = currentReportPeriodAndThresholds();
+  if(!ctx) return;
+  const { periodInfo, minVol, amberGap, redGap, absFloor } = ctx;
+  const rep = buildReportData(periodInfo, minVol, amberGap, redGap, absFloor);
+  if(!rep){ showToast('No data for this period'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'mm', format:'a4' });
+  const marginX = 18;
+  let y = 20;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(20); doc.setTextColor(0,7,67);
+  doc.text('munu.', marginX, y); y+=7;
+  doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(90,96,114);
+  doc.text(`Unifon agent performance report — ${rep.periodInfo.label}`, marginX, y); y+=4;
+  doc.setDrawColor(214,243,255); doc.setLineWidth(0.6);
+  doc.line(marginX, y, 210-marginX, y); y+=8;
+
+  function sectionHeader(text){
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(0,7,67);
+    doc.text(text, marginX, y); y+=6;
+  }
+  function afterTable(){ y = doc.lastAutoTable.finalY + 8; }
+  const headStyle = { fillColor:[0,7,67], textColor:[255,255,255], fontStyle:'bold', halign:'center' };
+  const altStyle  = { fillColor:[214,243,255] };
+
+  sectionHeader('Team overview' + (rep.qrows.length ? ' (from main-number report)' : ''));
+  const overviewHead = ['Answered','Missed','Answer rate'];
+  const overviewRow  = [rep.teamAnswered, rep.teamMissed, rep.teamAnswerRate.toFixed(0)+'%'];
+  if(rep.overKpiPct!=null){ overviewHead.push('Over KPI'); overviewRow.push(rep.overKpiPct.toFixed(0)+'%'); }
+  overviewHead.push('Avg handle time', 'Avg wait');
+  overviewRow.push(fmtDur(rep.teamAvgTalk), fmtDur(rep.avgQueueWait!=null ? rep.avgQueueWait : rep.teamAvgWait));
+  if(rep.avgAbandonWait!=null){ overviewHead.push('Avg abandon wait'); overviewRow.push(fmtDur(rep.avgAbandonWait)); }
+  if(rep.callbackReqs!=null && rep.callbackReqs>0){ overviewHead.push('Callback requests'); overviewRow.push(String(rep.callbackReqs)); }
+  doc.autoTable({
+    startY:y, margin:{left:marginX,right:marginX},
+    head:[overviewHead], body:[overviewRow],
+    headStyles:headStyle, styles:{fontSize:9, halign:'center'}, alternateRowStyles:altStyle,
+  });
+  afterTable();
+
+  if(rep.qrows.length){
+    if(y>250){ doc.addPage(); y=20; }
+    sectionHeader('Queue breakdown');
+    doc.autoTable({
+      startY:y, margin:{left:marginX,right:marginX},
+      head:[['Queue','Answered','Answer rate','Timeout rate','Avg handle time','Avg wait']],
+      body: rep.qrows.map(q=>[
+        q.queue, q.answered,
+        q.answerRate!=null ? q.answerRate.toFixed(0)+'%' : '-',
+        q.attempts>0 ? ((q.timeouts/q.attempts)*100).toFixed(0)+'%' : '-',
+        fmtDur(q.avgTalk), fmtDur(q.avgWait),
+      ]),
+      headStyles:headStyle, styles:{fontSize:9, halign:'center'}, columnStyles:{0:{halign:'left'}}, alternateRowStyles:altStyle,
+    });
+    afterTable();
+  }
+
+  if(y>250){ doc.addPage(); y=20; }
+  sectionHeader('Needs a conversation');
+  if(!rep.flags.length){
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(107,118,144);
+    doc.text('No agents flagged — everyone is within normal range.', marginX, y); y+=8;
+  } else {
+    doc.autoTable({
+      startY:y, margin:{left:marginX,right:marginX},
+      head:[['Agent','Level','Reason']],
+      body: rep.flags.map(f=>[f.name, f.level==='red' ? 'Red' : 'Amber', f.reason]),
+      headStyles:headStyle, styles:{fontSize:9, halign:'left'}, columnStyles:{1:{halign:'center'}}, alternateRowStyles:altStyle,
+    });
+    afterTable();
+  }
+
+  if(rep.wrapupRows.length){
+    if(y>250){ doc.addPage(); y=20; }
+    sectionHeader('Post-call wrapup — from live capture');
+    doc.autoTable({
+      startY:y, margin:{left:marginX,right:marginX},
+      head:[['Agent','Wrapup count','Avg wrapup','Longest','Extended (>75s)']],
+      body: rep.wrapupRows.map(w=>[
+        w.name, w.count, (w.avgMinutes*60).toFixed(0)+'s', (w.longest*60).toFixed(0)+'s',
+        w.flaggedCount>0 ? String(w.flaggedCount) : '-',
+      ]),
+      headStyles:headStyle, styles:{fontSize:9, halign:'center'}, columnStyles:{0:{halign:'left'}}, alternateRowStyles:altStyle,
+    });
+    afterTable();
+  }
+
+  if(y>250){ doc.addPage(); y=20; }
+  sectionHeader('Agent performance — ranked by answer rate');
+  doc.autoTable({
+    startY:y, margin:{left:marginX,right:marginX},
+    head:[['#','Agent','Queues','Answered','Answer rate','Timeout rate','Avg handle time','Avg wait']],
+    body: rep.ranked.map(r=>[
+      r.rank!=null ? String(r.rank) : '-', r.name, r.queues, r.answered,
+      r.answerRate!=null ? r.answerRate.toFixed(0)+'%' : '-',
+      r.timeoutRate!=null ? r.timeoutRate.toFixed(0)+'%' : '-',
+      fmtDur(r.avgTalk), fmtDur(r.avgWaitAnswered),
+    ]),
+    headStyles:headStyle, styles:{fontSize:8.5, halign:'center'}, columnStyles:{1:{halign:'left'}}, alternateRowStyles:altStyle,
+    didParseCell: function(data){
+      if(data.section==='body' && data.column.index===1){
+        const row = rep.ranked[data.row.index];
+        if(row && row.flagColor) data.cell.styles.textColor = hexToRgb(row.flagColor);
+      }
+    },
+  });
+  afterTable();
+
+  y += 2;
+  doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(122,127,149);
+  doc.text('munu. — Unifon Agent Performance Dashboard', marginX, Math.min(y,290));
+
+  const fname = ('unifon-report-'+rep.periodInfo.label).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+  doc.save((fname||'unifon-report')+'.pdf');
 }
 
 /* ---------- windows notifications ---------- */
@@ -3177,16 +3287,12 @@ function renderTVStats(){
   ALL_QUEUE_RECORDS = await loadQueueStore();
   ALL_TEAM_RECORDS = await loadTeamStore();
   ALL_CALL_RECORDS = await loadCallStore();
-  INGESTED_FILES = await loadFiles();
-  renderFileChips();
   const savedGranularity = await storageGet('unifon-view-granularity');
   if(savedGranularity) viewGranularity = savedGranularity;
-  const note = document.getElementById('storageNote');
-  note.textContent = hasClaudeStorage
-    ? 'Saved via Claude — data persists as long as you return to this conversation.'
-    : 'Saved locally in this browser on this computer — reopening this same file will keep your data.';
   render();
   if(IS_TV) renderTV();
+  refreshLiveReports();
+  setInterval(refreshLiveReports, 5 * 60 * 1000); // report data doesn't need second-level freshness
 })();
 </script>
 </body>
