@@ -327,16 +327,17 @@
   /* right column: "on the phones" above, "calls today" below, sharing the space */
   .tvright{ display:flex; flex-direction:column; gap:clamp(8px,0.8vw,15px); min-height:0; }
   .tvcallstoday{ flex:0 0 auto; max-height:clamp(220px,46vh,520px); }
-  .tvcalls-list{ display:flex; flex-direction:column; gap:clamp(2px,0.35vh,5px); overflow:hidden; flex:1 1 auto; min-height:0; }
-  .tvcrow{ display:flex; align-items:center; gap:clamp(6px,0.6vw,10px); padding:clamp(2px,0.35vh,4px) clamp(4px,0.5vw,8px); border-radius:8px; }
-  .tvcrow .tvav{ width:clamp(18px,2.2vh,28px); height:clamp(18px,2.2vh,28px); font-size:clamp(7.5px,0.95vh,12px); }
-  .tvcname{ font-size:clamp(9.5px,1.1vh,14px); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:0; }
-  .tvccount{ margin-left:auto; display:flex; align-items:center; gap:4px; flex:0 0 auto; font-family:'Fira Sans',sans-serif; font-weight:800; font-size:clamp(10.5px,1.25vh,16px); color:var(--tvink1); }
+  .tvcalls-list{ display:flex; flex-direction:column; overflow:hidden; flex:1 1 auto; min-height:0; }
+  /* row height/font sizes are set inline per render (renderTVCallsToday) so
+     the whole roster always fits the panel's fixed height — dense on a busy
+     day, roomier on a quiet one — rather than a fixed size that clips names. */
+  .tvcrow{ display:flex; align-items:center; border-radius:8px; }
+  .tvcname{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:0; }
+  .tvccount{ margin-left:auto; display:flex; align-items:center; gap:4px; flex:0 0 auto; font-family:'Fira Sans',sans-serif; font-weight:800; color:var(--tvink1); }
   .tvcrow.top{ background:#FFF7E0; border:1px solid #F3D98B; }
-  .tvcrow.top .tvav{ width:clamp(22px,2.7vh,34px); height:clamp(22px,2.7vh,34px); font-size:clamp(9px,1.15vh,14px); }
-  .tvcrow.top .tvcname{ font-weight:800; font-size:clamp(11px,1.3vh,16px); }
-  .tvcrow.top .tvccount{ color:#9A6206; font-size:clamp(12px,1.45vh,19px); }
-  .tvcrow-crown{ flex:0 0 auto; font-size:clamp(11px,1.3vh,16px); line-height:1; }
+  .tvcrow.top .tvcname{ font-weight:800; }
+  .tvcrow.top .tvccount{ color:#9A6206; }
+  .tvcrow-crown{ flex:0 0 auto; line-height:1; }
 
   /* kpis */
   .tvkpis{ display:grid; grid-template-columns:repeat(2,1fr); gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
@@ -418,6 +419,8 @@
     </div>
     <div style="display:flex; gap:8px;">
       <button class="btn ghost small" onclick="openTV()">TV view</button>
+      <input type="file" id="paletteImportInput" accept="image/*" style="display:none;">
+      <button class="btn ghost small" id="paletteImportBtn" title="Upload a chart screenshot (e.g. the Zendesk 'Tickets Solved' chart) to pull the TV view's agent colors from it">Import chart colors</button>
       <button class="btn ghost small" id="resetBtn">Clear all data</button>
     </div>
   </div>
@@ -3115,6 +3118,10 @@ function initTV(){
   loadScheduleAndHiddenAgents().then(renderTVWho);
   setInterval(() => loadScheduleAndHiddenAgents().then(renderTVWho), 5 * 60 * 1000);
 
+  // Pick up an "Import chart colors" change made from another browser without
+  // needing to reload this TV tab.
+  setInterval(() => loadAgentColors().then(renderTV), 5 * 60 * 1000);
+
   // The "on a call" / "off queue" durations and the stale-data warning need to
   // count up every second; the live poll itself only runs every 8s.
   setInterval(() => {
@@ -3197,8 +3204,11 @@ function tvQueueHidden(name){
 }
 
 // One stable colour per agent, assigned by name so a person keeps their colour
-// between refreshes even as the ranking reshuffles.
-const TV_PALETTE = ['#3B82F6','#10B981','#F59E0B','#A855F7','#EC4899','#06B6D4','#E11D48','#84CC16','#0EA5E9','#F97316','#8B5CF6','#14B8A6'];
+// between refreshes even as the ranking reshuffles. Sampled from the team's
+// Zendesk "Tickets Solved" chart so the TV view reads consistently with it;
+// replaceable via "Import chart colors" (see loadAgentColors/saveAgentColors).
+const DEFAULT_TV_PALETTE = ['#0844A6','#0D9467','#C37E08','#320892','#9C1055','#0592AA','#A30924','#6AA312','#BE5105','#109385','#0B84BA','#840E96','#1B9E4B'];
+let TV_PALETTE = DEFAULT_TV_PALETTE.slice();
 function tvColorFor(name){
   let h = 0;
   for(let i=0;i<name.length;i++) h = (h*31 + name.charCodeAt(i)) >>> 0;
@@ -3207,6 +3217,141 @@ function tvColorFor(name){
 function tvInitials(name){
   return name.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase();
 }
+
+// First name alone, unless someone else in the list shares it (e.g. two
+// Mathiases) — then disambiguate as "Mathias.M" / "Mathias.U" using the
+// initial of each one's last name.
+function tvShortDisplayName(name, allNames){
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const first = words[0] || name;
+  if(words.length < 2) return first;
+  const collides = allNames.some(other => other !== name && other.trim().split(/\s+/)[0] === first);
+  if(!collides) return first;
+  return first + '.' + words[words.length-1][0].toUpperCase();
+}
+
+// A custom palette (from "Import chart colors") is shared via capture-server
+// so every screen showing the TV view — not just whichever browser did the
+// import — picks it up. Requires capture-server to serve/accept
+// agent-colors.json the same way it already does schedule.json.
+async function loadAgentColors(){
+  try{
+    const res = await fetch(liveUrl('agent-colors.json'), {cache:'no-store'});
+    if(res.ok){
+      const arr = await res.json();
+      if(Array.isArray(arr) && arr.length) TV_PALETTE = arr;
+    }
+  }catch(e){ /* keep whatever palette we already have client-side */ }
+}
+async function saveAgentColors(palette){
+  TV_PALETTE = palette;
+  try{
+    const res = await fetch(liveUrl('agent-colors.json'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(palette)
+    });
+    if(!res.ok) throw new Error('bad response');
+  }catch(e){
+    showToast('Colors applied here, but could not save to the capture server — check it supports agent-colors.json');
+  }
+}
+
+/* ---------- "Import chart colors" — pull a palette out of a screenshot ----------
+ * Built for charts like the Zendesk "Tickets Solved" one: solid-colour bars
+ * sitting on a shared baseline near the bottom of the image. We scan several
+ * candidate rows in the lower part of the image, keep whichever row cuts
+ * through the most distinct bars (the row closest to the baseline sees even
+ * the shortest bars), and read off their colours left to right.
+ */
+function rgbToHex(r, g, b){
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+function tvColorsClose(a, b, tol){
+  return Math.abs(a[0]-b[0]) <= tol && Math.abs(a[1]-b[1]) <= tol && Math.abs(a[2]-b[2]) <= tol;
+}
+function extractPaletteFromImageData(imgData, w, h){
+  const data = imgData.data;
+  const pxAt = (x, y) => { const i = (y*w + x) * 4; return [data[i], data[i+1], data[i+2]]; };
+
+  // Background = the most common colour on a coarse grid sample.
+  const freq = new Map();
+  for(let y = 0; y < h; y += 7){
+    for(let x = 0; x < w; x += 7){
+      const [r,g,b] = pxAt(x, y);
+      const key = r+','+g+','+b;
+      freq.set(key, (freq.get(key) || 0) + 1);
+    }
+  }
+  let bg = [255,255,255], bgCount = 0;
+  for(const [key, count] of freq){
+    if(count > bgCount){ bgCount = count; bg = key.split(',').map(Number); }
+  }
+
+  const minSegWidth = Math.max(6, w * 0.015);
+  function segmentsAtRow(y){
+    const segs = [];
+    let curColor = null, curStart = 0;
+    for(let x = 0; x < w; x++){
+      const c = pxAt(x, y);
+      const same = curColor && tvColorsClose(c, curColor, 10);
+      if(!same){
+        if(curColor) segs.push({ start: curStart, end: x-1, color: curColor });
+        curColor = c; curStart = x;
+      }
+    }
+    segs.push({ start: curStart, end: w-1, color: curColor });
+    return segs.filter(s => (s.end - s.start) >= minSegWidth && !tvColorsClose(s.color, bg, 14));
+  }
+
+  // Scan the whole image height rather than assuming where the chart sits —
+  // dashboards often have other content (labels, stat tiles) above or below
+  // the bars themselves. Whichever row happens to cut through the most
+  // distinct, wide, non-background segments is almost certainly a row near
+  // the bars' shared baseline, since that's the row every bar reaches.
+  let best = [];
+  for(let y = 0; y < h; y += 2){
+    const segs = segmentsAtRow(y);
+    if(segs.length > best.length) best = segs;
+  }
+
+  const outRgb = [];
+  for(const s of best){
+    if(!outRgb.length || !tvColorsClose(outRgb[outRgb.length-1], s.color, 10)) outRgb.push(s.color);
+  }
+  return outRgb.map(c => rgbToHex(...c));
+}
+
+async function importAgentColorsFromImage(file){
+  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = bitmap.width; canvas.height = bitmap.height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(bitmap, 0, 0);
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  return extractPaletteFromImageData(imgData, canvas.width, canvas.height);
+}
+
+document.getElementById('paletteImportBtn').addEventListener('click', () => {
+  document.getElementById('paletteImportInput').click();
+});
+document.getElementById('paletteImportInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  try{
+    const palette = await importAgentColorsFromImage(file);
+    if(palette.length < 2){
+      showToast('Could not find distinct bar colors in that image');
+      return;
+    }
+    await saveAgentColors(palette);
+    showToast(`Imported ${palette.length} colors — TV view picks them up within 5 minutes (or refresh it now)`);
+    if(IS_TV) renderTV();
+  }catch(err){
+    showToast('Could not read that image');
+  }
+});
 
 const TV_ICON = {
   calls: c => `<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.5 21 3 13.5 3 4.5c0-.6.4-1 1-1H8c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.2 1l-2.2 2.2Z" fill="${c}"/></svg>`,
@@ -3518,6 +3663,12 @@ function renderTVWho(){
   }).join('');
 }
 
+// Row sizing shrinks (or grows) to fit however many agents took a call today
+// into the panel's fixed height — a busy day gets denser rows instead of
+// silently clipping names off the bottom, a quiet day gets bigger, more
+// readable rows instead of looking sparse. Only once the roster is so large
+// that even minimum-size rows don't fit does the list fall back to scrolling.
+const TVC_ROW_MIN = 18, TVC_ROW_MAX = 44;
 function renderTVCallsToday(){
   const listEl = document.getElementById('tvCallsTodayList');
   const noteEl = document.getElementById('tvCallsTodayNote');
@@ -3527,20 +3678,39 @@ function renderTVCallsToday(){
   if(noteEl) noteEl.textContent = data.length ? `${data.reduce((s,a)=>s+a.count,0)} total` : '';
 
   if(!data.length){
+    listEl.style.overflowY = '';
     listEl.innerHTML = '<div class="tv-empty">No calls answered yet today</div>';
     return;
   }
 
+  const n = data.length;
+  const available = listEl.clientHeight || 300; // fallback before first layout
+  let rowH = available / (n + (n - 1) * 0.15);
+  rowH = Math.max(TVC_ROW_MIN, Math.min(TVC_ROW_MAX, rowH));
+  const gapPx = Math.max(2, Math.min(8, rowH * 0.15));
+  const fits = n * rowH + (n - 1) * gapPx <= available + 0.5; // +0.5 for rounding
+  listEl.style.overflowY = fits ? '' : 'auto';
+  if(!fits) rowH = TVC_ROW_MIN;
+
+  const avatarPx = Math.round(rowH * 0.62);
+  const nameFs = Math.round(rowH * 0.34);
+  const countFs = Math.round(rowH * 0.38);
+  const iconPx = Math.round(countFs * 0.72);
+  const padV = Math.max(1, Math.round(rowH * 0.1));
+  const padH = Math.max(3, Math.round(rowH * 0.15));
+
   const maxCount = data[0].count;
+  listEl.style.gap = gapPx + 'px';
   listEl.innerHTML = data.map(a => {
     const c = tvColorFor(a.name);
     const isTop = a.count === maxCount;
+    const icon = TV_ICON.calls(c).replace('width="10" height="10"', `width="${iconPx}" height="${iconPx}"`);
     return `
-      <div class="tvcrow${isTop ? ' top' : ''}">
-        ${isTop ? '<span class="tvcrow-crown">&#x1F451;</span>' : ''}
-        <span class="tvav" style="background:${c}">${tvInitials(a.name)}</span>
-        <span class="tvcname">${a.name}</span>
-        <span class="tvccount">${TV_ICON.calls(c)}${a.count}</span>
+      <div class="tvcrow${isTop ? ' top' : ''}" style="padding:${padV}px ${padH}px; gap:${Math.round(rowH*0.22)}px;">
+        ${isTop ? `<span class="tvcrow-crown" style="font-size:${nameFs}px">&#x1F451;</span>` : ''}
+        <span class="tvav" style="background:${c}; width:${avatarPx}px; height:${avatarPx}px; font-size:${Math.round(avatarPx*0.42)}px;">${tvInitials(a.name)}</span>
+        <span class="tvcname" style="font-size:${nameFs}px;">${a.name}</span>
+        <span class="tvccount" style="font-size:${countFs}px;">${icon}${a.count}</span>
       </div>`;
   }).join('');
 }
@@ -3583,12 +3753,13 @@ function renderTVChart(){
       <div class="tvbar" style="height:${d.count/ceilVal*100}%; background:${tvColorFor(d.name)}"></div>
     </div>`).join('');
 
+  const allNames = data.map(d => d.name);
   namesEl.innerHTML = '<div class="tvnames-pad"></div>' + data.map(d => {
     const c = tvColorFor(d.name);
     const dur = d.avgDurationMin != null ? fmtDur(d.avgDurationMin*60) : '—';
     return `
       <div class="tvncol">
-        <div class="tvnname" style="color:${c}">${d.name.split(/\s+/)[0]}</div>
+        <div class="tvnname" style="color:${c}">${tvShortDisplayName(d.name, allNames)}</div>
         <div class="tvnstats">
           <div class="tvnstat">${TV_ICON.calls(c)}${d.count}</div>
           <div class="tvnstat">${TV_ICON.dur(c)}${dur}</div>
@@ -3640,6 +3811,7 @@ function renderTVKpis(){
   ALL_CALL_RECORDS = await loadCallStore();
   const savedGranularity = await storageGet('unifon-view-granularity');
   if(savedGranularity) viewGranularity = savedGranularity;
+  await loadAgentColors();
   render();
   if(IS_TV) renderTV();
   refreshLiveReports();
