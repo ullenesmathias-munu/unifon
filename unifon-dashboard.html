@@ -326,15 +326,20 @@
 
   /* right column: "on the phones" above, "calls today" below, sharing the space */
   .tvright{ display:flex; flex-direction:column; gap:clamp(8px,0.8vw,15px); min-height:0; }
-  .tvcallstoday{ flex:0 0 auto; max-height:clamp(140px,30vh,320px); }
+  .tvcallstoday{ flex:0 0 auto; max-height:clamp(220px,46vh,520px); }
   .tvcalls-list{ display:flex; flex-direction:column; gap:clamp(2px,0.35vh,5px); overflow:hidden; flex:1 1 auto; min-height:0; }
-  .tvcrow{ display:flex; align-items:center; gap:clamp(6px,0.6vw,10px); padding:clamp(2px,0.35vh,4px) 1px; }
+  .tvcrow{ display:flex; align-items:center; gap:clamp(6px,0.6vw,10px); padding:clamp(2px,0.35vh,4px) clamp(4px,0.5vw,8px); border-radius:8px; }
   .tvcrow .tvav{ width:clamp(18px,2.2vh,28px); height:clamp(18px,2.2vh,28px); font-size:clamp(7.5px,0.95vh,12px); }
   .tvcname{ font-size:clamp(9.5px,1.1vh,14px); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:0; }
   .tvccount{ margin-left:auto; display:flex; align-items:center; gap:4px; flex:0 0 auto; font-family:'Fira Sans',sans-serif; font-weight:800; font-size:clamp(10.5px,1.25vh,16px); color:var(--tvink1); }
+  .tvcrow.top{ background:#FFF7E0; border:1px solid #F3D98B; }
+  .tvcrow.top .tvav{ width:clamp(22px,2.7vh,34px); height:clamp(22px,2.7vh,34px); font-size:clamp(9px,1.15vh,14px); }
+  .tvcrow.top .tvcname{ font-weight:800; font-size:clamp(11px,1.3vh,16px); }
+  .tvcrow.top .tvccount{ color:#9A6206; font-size:clamp(12px,1.45vh,19px); }
+  .tvcrow-crown{ flex:0 0 auto; font-size:clamp(11px,1.3vh,16px); line-height:1; }
 
   /* kpis */
-  .tvkpis{ display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
+  .tvkpis{ display:grid; grid-template-columns:repeat(2,1fr); gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
   .tvkpi{
     background:var(--tvcard); border:1px solid var(--tvline); border-radius:clamp(8px,1vh,12px);
     padding:clamp(9px,1.1vh,17px) clamp(14px,1.3vw,24px);
@@ -3526,10 +3531,13 @@ function renderTVCallsToday(){
     return;
   }
 
+  const maxCount = data[0].count;
   listEl.innerHTML = data.map(a => {
     const c = tvColorFor(a.name);
+    const isTop = a.count === maxCount;
     return `
-      <div class="tvcrow">
+      <div class="tvcrow${isTop ? ' top' : ''}">
+        ${isTop ? '<span class="tvcrow-crown">&#x1F451;</span>' : ''}
         <span class="tvav" style="background:${c}">${tvInitials(a.name)}</span>
         <span class="tvcname">${a.name}</span>
         <span class="tvccount">${TV_ICON.calls(c)}${a.count}</span>
@@ -3597,16 +3605,6 @@ function renderTVKpis(){
   const data = computeCallsAnsweredThisWeek();
   const totalCalls = data.reduce((s,d) => s + d.count, 0);
 
-  // Weighted by each agent's call count, so a low-volume agent's long calls
-  // don't skew the team average.
-  let talkNum = 0, talkDen = 0;
-  for(const d of data){
-    if(d.avgDurationMin == null) continue;
-    talkNum += d.avgDurationMin * d.count;
-    talkDen += d.count;
-  }
-  const avgTalk = talkDen > 0 ? talkNum/talkDen : null;
-
   // Answer rate for the week from the stored MainReport days.
   const monday = mondayOf(Date.now()).getTime();
   let wkAnswered = 0, wkTotal = 0;
@@ -3624,7 +3622,6 @@ function renderTVKpis(){
   const kpis = [
     { v: totalCalls || '—', l: 'Calls answered this week' },
     { v: rate === null ? '—' : rate.toFixed(0)+'%', l: 'Answer rate this week', cls: rate !== null ? 'good' : '' },
-    { v: avgTalk === null ? '—' : fmtDur(avgTalk*60), l: 'Avg handle time this week' },
   ];
   el.innerHTML = kpis.map(k =>
     `<div class="tvkpi"><div class="tvkval ${k.cls||''}">${k.v}</div><div class="tvklbl">${k.l}</div></div>`).join('');
