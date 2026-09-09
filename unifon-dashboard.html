@@ -323,6 +323,7 @@
   .tvbadge.gone{ background:#FBE0E3; color:#A61B26; }
   .tvbadge i{ width:7px; height:7px; border-radius:50%; display:inline-block; background:currentColor; }
   .tvtimer{ font-variant-numeric:tabular-nums; font-size:clamp(8.5px,1vh,12.5px); color:var(--tvink2); font-weight:600; }
+  .tvlogoffs{ display:flex; align-items:center; gap:3px; font-variant-numeric:tabular-nums; font-size:clamp(8.5px,1vh,12.5px); color:var(--tvink2); font-weight:600; }
 
   /* right column: "on the phones" above, "calls today" below, sharing the space */
   .tvright{ display:flex; flex-direction:column; gap:clamp(8px,0.8vw,15px); min-height:0; }
@@ -419,8 +420,6 @@
     </div>
     <div style="display:flex; gap:8px;">
       <button class="btn ghost small" onclick="openTV()">TV view</button>
-      <input type="file" id="paletteImportInput" accept="image/*" style="display:none;">
-      <button class="btn ghost small" id="paletteImportBtn" title="Upload a chart screenshot (e.g. the Zendesk 'Tickets Solved' chart) to pull the TV view's agent colors from it">Import chart colors</button>
       <button class="btn ghost small" id="resetBtn">Clear all data</button>
     </div>
   </div>
@@ -2605,19 +2604,6 @@ function countLogoffsByDayName(){
   return counts;
 }
 
-// Same definition as countLogoffsByDayName, summed across the whole week
-// (Monday 00:00 through now) instead of bucketed per day — for the TV
-// "Most calls answered this week" panel.
-function computeLogoffsThisWeek(){
-  const weekStart = mondayOf(Date.now()).getTime();
-  const counts = new Map(); // name -> count
-  for(const e of liveEvents){
-    if(e.direction !== 'out' || hiddenAgents.includes(e.name) || e.ts < weekStart) continue;
-    counts.set(e.name, (counts.get(e.name) || 0) + 1);
-  }
-  return counts;
-}
-
 // Total time `name` was logged in on ANY queue, overlapping [rangeStart, rangeEnd]
 // (all ms epoch). Merges overlapping queue sessions with a counter so being on
 // two queues at once isn't double-counted, and treats a session with no closing
@@ -3112,15 +3098,11 @@ function initTV(){
   fetchWeather();
   setInterval(fetchWeather, 600000);
 
-  // Schedule + hidden-agents drive the "off queue" roster (tvScheduledToday) —
-  // load now and re-poll periodically so an edit to today's schedule shows up
-  // without reloading the TV tab.
+  // hidden-agents (who to leave off entirely) drives most of the TV view —
+  // load now and re-poll periodically so a hide/unhide shows up without
+  // reloading the TV tab.
   loadScheduleAndHiddenAgents().then(renderTVWho);
   setInterval(() => loadScheduleAndHiddenAgents().then(renderTVWho), 5 * 60 * 1000);
-
-  // Pick up an "Import chart colors" change made from another browser without
-  // needing to reload this TV tab.
-  setInterval(() => loadAgentColors().then(renderTV), 5 * 60 * 1000);
 
   // The "on a call" / "off queue" durations and the stale-data warning need to
   // count up every second; the live poll itself only runs every 8s.
@@ -3205,14 +3187,15 @@ function tvQueueHidden(name){
 
 // One stable colour per agent, assigned by name so a person keeps their colour
 // between refreshes even as the ranking reshuffles. Sampled from the team's
-// Zendesk "Tickets Solved" chart so the TV view reads consistently with it;
-// replaceable via "Import chart colors" (see loadAgentColors/saveAgentColors).
-const DEFAULT_TV_PALETTE = ['#0844A6','#0D9467','#C37E08','#320892','#9C1055','#0592AA','#A30924','#6AA312','#BE5105','#109385','#0B84BA','#840E96','#1B9E4B'];
-let TV_PALETTE = DEFAULT_TV_PALETTE.slice();
+// Zendesk "Tickets Solved" chart so the TV view reads consistently with it.
+// Hashing the name straight into a hue (rather than picking from a small
+// fixed palette) spreads agents across the full color wheel, so colors look
+// essentially arbitrary while still being the same for a given person every
+// time — no palette to maintain, and no realistic limit on team size.
 function tvColorFor(name){
   let h = 0;
   for(let i=0;i<name.length;i++) h = (h*31 + name.charCodeAt(i)) >>> 0;
-  return TV_PALETTE[h % TV_PALETTE.length];
+  return `hsl(${h % 360}, 68%, 42%)`;
 }
 function tvInitials(name){
   return name.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase();
@@ -3230,129 +3213,6 @@ function tvShortDisplayName(name, allNames){
   return first + '.' + words[words.length-1][0].toUpperCase();
 }
 
-// A custom palette (from "Import chart colors") is shared via capture-server
-// so every screen showing the TV view — not just whichever browser did the
-// import — picks it up. Requires capture-server to serve/accept
-// agent-colors.json the same way it already does schedule.json.
-async function loadAgentColors(){
-  try{
-    const res = await fetch(liveUrl('agent-colors.json'), {cache:'no-store'});
-    if(res.ok){
-      const arr = await res.json();
-      if(Array.isArray(arr) && arr.length) TV_PALETTE = arr;
-    }
-  }catch(e){ /* keep whatever palette we already have client-side */ }
-}
-async function saveAgentColors(palette){
-  TV_PALETTE = palette;
-  try{
-    const res = await fetch(liveUrl('agent-colors.json'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(palette)
-    });
-    if(!res.ok) throw new Error('bad response');
-  }catch(e){
-    showToast('Colors applied here, but could not save to the capture server — check it supports agent-colors.json');
-  }
-}
-
-/* ---------- "Import chart colors" — pull a palette out of a screenshot ----------
- * Built for charts like the Zendesk "Tickets Solved" one: solid-colour bars
- * sitting on a shared baseline near the bottom of the image. We scan several
- * candidate rows in the lower part of the image, keep whichever row cuts
- * through the most distinct bars (the row closest to the baseline sees even
- * the shortest bars), and read off their colours left to right.
- */
-function rgbToHex(r, g, b){
-  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
-}
-function tvColorsClose(a, b, tol){
-  return Math.abs(a[0]-b[0]) <= tol && Math.abs(a[1]-b[1]) <= tol && Math.abs(a[2]-b[2]) <= tol;
-}
-function extractPaletteFromImageData(imgData, w, h){
-  const data = imgData.data;
-  const pxAt = (x, y) => { const i = (y*w + x) * 4; return [data[i], data[i+1], data[i+2]]; };
-
-  // Background = the most common colour on a coarse grid sample.
-  const freq = new Map();
-  for(let y = 0; y < h; y += 7){
-    for(let x = 0; x < w; x += 7){
-      const [r,g,b] = pxAt(x, y);
-      const key = r+','+g+','+b;
-      freq.set(key, (freq.get(key) || 0) + 1);
-    }
-  }
-  let bg = [255,255,255], bgCount = 0;
-  for(const [key, count] of freq){
-    if(count > bgCount){ bgCount = count; bg = key.split(',').map(Number); }
-  }
-
-  const minSegWidth = Math.max(6, w * 0.015);
-  function segmentsAtRow(y){
-    const segs = [];
-    let curColor = null, curStart = 0;
-    for(let x = 0; x < w; x++){
-      const c = pxAt(x, y);
-      const same = curColor && tvColorsClose(c, curColor, 10);
-      if(!same){
-        if(curColor) segs.push({ start: curStart, end: x-1, color: curColor });
-        curColor = c; curStart = x;
-      }
-    }
-    segs.push({ start: curStart, end: w-1, color: curColor });
-    return segs.filter(s => (s.end - s.start) >= minSegWidth && !tvColorsClose(s.color, bg, 14));
-  }
-
-  // Scan the whole image height rather than assuming where the chart sits —
-  // dashboards often have other content (labels, stat tiles) above or below
-  // the bars themselves. Whichever row happens to cut through the most
-  // distinct, wide, non-background segments is almost certainly a row near
-  // the bars' shared baseline, since that's the row every bar reaches.
-  let best = [];
-  for(let y = 0; y < h; y += 2){
-    const segs = segmentsAtRow(y);
-    if(segs.length > best.length) best = segs;
-  }
-
-  const outRgb = [];
-  for(const s of best){
-    if(!outRgb.length || !tvColorsClose(outRgb[outRgb.length-1], s.color, 10)) outRgb.push(s.color);
-  }
-  return outRgb.map(c => rgbToHex(...c));
-}
-
-async function importAgentColorsFromImage(file){
-  const bitmap = await createImageBitmap(file);
-  const canvas = document.createElement('canvas');
-  canvas.width = bitmap.width; canvas.height = bitmap.height;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(bitmap, 0, 0);
-  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  return extractPaletteFromImageData(imgData, canvas.width, canvas.height);
-}
-
-document.getElementById('paletteImportBtn').addEventListener('click', () => {
-  document.getElementById('paletteImportInput').click();
-});
-document.getElementById('paletteImportInput').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if(!file) return;
-  try{
-    const palette = await importAgentColorsFromImage(file);
-    if(palette.length < 2){
-      showToast('Could not find distinct bar colors in that image');
-      return;
-    }
-    await saveAgentColors(palette);
-    showToast(`Imported ${palette.length} colors — TV view picks them up within 5 minutes (or refresh it now)`);
-    if(IS_TV) renderTV();
-  }catch(err){
-    showToast('Could not read that image');
-  }
-});
-
 const TV_ICON = {
   calls: c => `<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.5 21 3 13.5 3 4.5c0-.6.4-1 1-1H8c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.2 1l-2.2 2.2Z" fill="${c}"/></svg>`,
   dur:   c => `<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="${c}" stroke-width="2.2"/><path d="M12 7v5l3.5 2" stroke="${c}" stroke-width="2.2" stroke-linecap="round"/></svg>`,
@@ -3360,14 +3220,11 @@ const TV_ICON = {
 };
 
 // Per-agent answered-call counts, Monday-of-this-week through now — Unifon's
-// own AgentReport totals via capture-server's /agent-stats.json. Logoffs are
-// ours (computeLogoffsThisWeek, from events.json).
+// own AgentReport totals via capture-server's /agent-stats.json.
 function computeCallsAnsweredThisWeek(){
   if(!liveAgentStats || !liveAgentStats.agents) return [];
-  const logoffs = computeLogoffsThisWeek();
   return liveAgentStats.agents
     .filter(a => a.count > 0 && !hiddenAgents.includes(a.name))
-    .map(a => ({ ...a, logoffs: logoffs.get(a.name) || 0 }))
     .sort((a,b) => b.count - a.count);
 }
 
@@ -3452,20 +3309,20 @@ function tvKnownAgents(){
   return names;
 }
 
-// Agents with a real shift assigned today in the Team Schedule tab (blank and
-// SO/day-off don't count) — used to keep the "off queue" list to actual
-// rostered teammates, rather than anyone who merely touched a visible queue
-// today for unrelated reasons (cross-team coverage, testing, etc).
-function tvScheduledToday(){
-  const wk = weekKeyFor(Date.now());
-  const weekData = schedule[wk] || {};
-  const dayKey = WEEK_DAY_KEYS[(new Date().getDay() + 6) % 7];
-  const block = (dayKey === 'sat' || dayKey === 'sun') ? 'weekend' : 'weekday';
+// Agents who have logged onto a visible queue at least once today — this is
+// what makes someone appear in "On the phones" at all, alongside actually
+// being on a call or on queue right now. Being on today's Team Schedule isn't
+// enough on its own: an evening/weekend-only agent would otherwise show up
+// hours before their shift starts, as "off queue" with a stale logoff time
+// left over from a previous day — which reads as if something's wrong when
+// really they just haven't started yet. Resets naturally every day since
+// it's keyed by today's date.
+function tvLoggedInToday(){
+  const todayKey = fmtDateKey(Date.now());
   const names = new Set();
-  for(const name of Object.keys(weekData)){
-    if(hiddenAgents.includes(name)) continue;
-    const code = resolveDayCode(weekData[name], dayKey, block);
-    if(code && code !== 'SO') names.add(name);
+  for(const e of liveEvents){
+    if(e.direction !== 'in' || tvQueueHidden(e.queue) || hiddenAgents.includes(e.name)) continue;
+    if(fmtDateKey(e.ts) === todayKey) names.add(e.name);
   }
   return names;
 }
@@ -3479,6 +3336,19 @@ function tvLastLogoffTs(){
     if(cur === undefined || e.ts > cur) last.set(e.name, e.ts);
   }
   return last;
+}
+
+// How many times each agent has logged off a visible queue today — shown
+// live on "On the phones" instead of buried as a weekly stat under the chart.
+function tvLogoffCountsToday(){
+  const todayKey = fmtDateKey(Date.now());
+  const counts = new Map();
+  for(const e of liveEvents){
+    if(e.direction !== 'out' || tvQueueHidden(e.queue) || hiddenAgents.includes(e.name)) continue;
+    if(fmtDateKey(e.ts) !== todayKey) continue;
+    counts.set(e.name, (counts.get(e.name) || 0) + 1);
+  }
+  return counts;
 }
 
 function renderTV(){
@@ -3617,9 +3487,9 @@ function renderTVWho(){
   }
 
   const lastOff = tvLastLogoffTs();
-  const scheduledToday = tvScheduledToday();
+  const loggedInToday = tvLoggedInToday();
   const people = Array.from(tvKnownAgents())
-    .filter(name => onCallNames.has(name) || onQueue.has(name) || scheduledToday.has(name))
+    .filter(name => onCallNames.has(name) || onQueue.has(name) || loggedInToday.has(name))
     .map(name => {
       const state = onCallNames.has(name) ? 'call' : onQueue.has(name) ? 'free' : 'off';
       return { name, state };
@@ -3635,10 +3505,11 @@ function renderTVWho(){
     <span class="tvwc"><b style="color:var(--tvred)">${n('off')}</b>off queue</span>`;
 
   if(!people.length){
-    listEl.innerHTML = '<div class="tv-empty">No one scheduled to work today</div>';
+    listEl.innerHTML = '<div class="tv-empty">No one has logged onto the queue yet today</div>';
     return;
   }
 
+  const logoffCounts = tvLogoffCountsToday();
   listEl.innerHTML = people.map(p => {
     const c = tvColorFor(p.name);
     let badge;
@@ -3653,12 +3524,16 @@ function renderTVWho(){
     } else {
       badge = `<span class="tvbadge free"><i></i>Available</span>`;
     }
+    const logoffs = logoffCounts.get(p.name) || 0;
+    const logoffBadge = logoffs > 0
+      ? `<span class="tvlogoffs" title="Logged off queue ${logoffs} time${logoffs===1?'':'s'} today">${TV_ICON.off(c)}${logoffs}</span>`
+      : '';
     const cls = p.state === 'call' ? 'oncall' : p.state === 'off' ? 'offqueue' : '';
     return `
       <div class="tvprow ${cls}">
         <span class="tvav" style="background:${c}">${tvInitials(p.name)}</span>
         <span class="tvpname">${p.name}</span>
-        <span class="tvpstat">${badge}</span>
+        <span class="tvpstat">${logoffBadge}${badge}</span>
       </div>`;
   }).join('');
 }
@@ -3725,7 +3600,7 @@ function renderTVChart(){
   if(!barsEl) return;
 
   const data = computeCallsAnsweredThisWeek();
-  if(noteEl) noteEl.textContent = data.length ? 'calls · avg duration · logoffs' : '';
+  if(noteEl) noteEl.textContent = data.length ? 'calls · avg duration' : '';
 
   if(!data.length){
     yEl.innerHTML = '';
@@ -3763,7 +3638,6 @@ function renderTVChart(){
         <div class="tvnstats">
           <div class="tvnstat">${TV_ICON.calls(c)}${d.count}</div>
           <div class="tvnstat">${TV_ICON.dur(c)}${dur}</div>
-          <div class="tvnstat">${TV_ICON.off(c)}${d.logoffs}</div>
         </div>
       </div>`;
   }).join('');
@@ -3811,7 +3685,6 @@ function renderTVKpis(){
   ALL_CALL_RECORDS = await loadCallStore();
   const savedGranularity = await storageGet('unifon-view-granularity');
   if(savedGranularity) viewGranularity = savedGranularity;
-  await loadAgentColors();
   render();
   if(IS_TV) renderTV();
   refreshLiveReports();
