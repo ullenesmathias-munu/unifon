@@ -293,7 +293,7 @@
   .tvnstat{ display:flex; align-items:center; justify-content:center; gap:4px; font-size:clamp(7.5px,0.9vh,11px); font-weight:600; font-variant-numeric:tabular-nums; }
 
   /* on the phones */
-  .tvwho{ display:flex; flex-direction:column; flex:1 1 auto; min-height:0; }
+  .tvwho{ display:flex; flex-direction:column; flex:0.85 1 0; min-height:0; }
   .tvwho-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:clamp(7px,0.9vh,13px); flex:0 0 auto; gap:8px; }
   .tvwho-title{ font-size:clamp(12px,1.5vh,19px); font-weight:800; }
   .tvwho-count{ display:flex; gap:clamp(7px,0.75vw,13px); align-items:baseline; }
@@ -327,7 +327,7 @@
 
   /* right column: "on the phones" above, "calls today" below, sharing the space */
   .tvright{ display:flex; flex-direction:column; gap:clamp(8px,0.8vw,15px); min-height:0; }
-  .tvcallstoday{ flex:0 0 auto; max-height:clamp(220px,46vh,520px); }
+  .tvcallstoday{ flex:1.6 1 0; max-height:none; }
   .tvcalls-list{ display:flex; flex-direction:column; overflow:hidden; flex:1 1 auto; min-height:0; }
   /* row height/font sizes are set inline per render (renderTVCallsToday) so
      the whole roster always fits the panel's fixed height — dense on a busy
@@ -344,12 +344,12 @@
   .tvkpis{ display:grid; grid-template-columns:repeat(2,1fr); gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
   .tvkpi{
     background:var(--tvcard); border:1px solid var(--tvline); border-radius:clamp(8px,1vh,12px);
-    padding:clamp(9px,1.1vh,17px) clamp(14px,1.3vw,24px);
+    padding:clamp(6px,0.7vh,11px) clamp(12px,1.1vw,20px);
     box-shadow:0 1px 2px rgba(13,18,38,0.04);
   }
-  .tvkval{ font-size:clamp(22px,3vh,42px); font-weight:800; line-height:1; }
+  .tvkval{ font-size:clamp(16px,2vh,28px); font-weight:800; line-height:1; }
   .tvkval.good{ color:var(--tvgreen); }
-  .tvklbl{ font-size:clamp(9px,1.05vh,13px); color:var(--tvink2); margin-top:5px; }
+  .tvklbl{ font-size:clamp(8px,0.85vh,11px); color:var(--tvink2); margin-top:3px; }
 
   .tv-empty{ font-size:clamp(10px,1.2vh,14px); color:var(--tvink3); padding:8px 0; }
 </style>
