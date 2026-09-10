@@ -2917,7 +2917,6 @@ async function pollLive(){
     if(sres && sres.ok) liveStatus = await sres.json(); else liveStatus = null;
     if(cres && cres.ok) liveCalls = await cres.json(); else liveCalls = null;
     if(ares && ares.ok) liveAgentStats = await ares.json(); else liveAgentStats = null;
-    if(IS_TV) await tvEnsureCallBaseline();
 
     // Accumulate wait-time sample for TV sparkline
     if(liveStatus && liveStatus.queues) {
@@ -3229,38 +3228,24 @@ function computeCallsAnsweredThisWeek(){
 }
 
 /* ---------- calls answered today, per agent ----------
- * agent-stats.json only ever gives a running Monday-through-now total, so
- * "today" isn't in the feed directly. Instead we snapshot that weekly total
- * once at the start of each day (persisted, so a page reload doesn't lose it)
- * and treat today's count as whatever has accumulated above that snapshot.
- * On a Monday the server's own weekly total has itself just reset to 0, so
- * the snapshot taken that morning is 0 too and this still lands on exactly
- * today's count.
+ * Read straight from ALL_RECORDS' per-day agent totals — capture-server's own
+ * report-agent-daily.json, pulled into ALL_RECORDS by refreshLiveReports()
+ * every 30s, the same server-synced source tvAnsweredToday() already uses at
+ * team level. Every device sees the same numbers.
+ *
+ * This used to be reconstructed client-side: agent-stats.json only exposes a
+ * running Monday-through-now total, so "today" was faked by snapshotting that
+ * running total into IndexedDB the first time each browser loaded the page
+ * each day, then diffing later polls against it. Because that snapshot lived
+ * per-device, a browser opened later in the day baselined *after* some of
+ * today's calls had already landed — silently dropping those agents from
+ * "today" on that device only, while a device opened earlier kept them.
  */
-let tvCallBaseline = null; // { dateKey, counts:{name:count} } — weekly totals as of the start of today
-async function tvEnsureCallBaseline(){
-  const todayKey = fmtDateKey(Date.now());
-  if(tvCallBaseline && tvCallBaseline.dateKey === todayKey) return;
-  try{
-    const stored = await storageGet('unifon-tv-call-baseline');
-    const parsed = stored ? JSON.parse(stored) : null;
-    if(parsed && parsed.dateKey === todayKey){ tvCallBaseline = parsed; return; }
-  }catch(e){ /* fall through to a fresh snapshot */ }
-
-  const counts = {};
-  if(liveAgentStats && liveAgentStats.agents){
-    for(const a of liveAgentStats.agents) counts[a.name] = a.count;
-  }
-  tvCallBaseline = { dateKey: todayKey, counts };
-  try{ await storageSet('unifon-tv-call-baseline', JSON.stringify(tvCallBaseline)); }catch(e){ /* best effort */ }
-}
-
 function computeCallsToday(){
-  if(!liveAgentStats || !liveAgentStats.agents || !tvCallBaseline) return [];
-  return liveAgentStats.agents
-    .filter(a => !hiddenAgents.includes(a.name))
-    .map(a => ({ name: a.name, count: Math.max(0, a.count - (tvCallBaseline.counts[a.name] || 0)) }))
-    .filter(a => a.count > 0)
+  const todayKey = fmtDateDMY(Date.now());
+  return ALL_RECORDS
+    .filter(r => r.periodType === 'Day' && r.periodLabel === todayKey && r.answered > 0 && !hiddenAgents.includes(r.name))
+    .map(r => ({ name: r.name, count: r.answered }))
     .sort((a,b) => b.count - a.count);
 }
 
@@ -3688,7 +3673,7 @@ function renderTVKpis(){
   render();
   if(IS_TV) renderTV();
   refreshLiveReports();
-  setInterval(refreshLiveReports, 5 * 60 * 1000); // report data doesn't need second-level freshness
+  setInterval(refreshLiveReports, 30 * 1000); // small static JSON files — cheap to poll often, keeps TV tiles near-live
 })();
 </script>
 </body>
