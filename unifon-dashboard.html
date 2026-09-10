@@ -293,7 +293,7 @@
   .tvnstat{ display:flex; align-items:center; justify-content:center; gap:4px; font-size:clamp(7.5px,0.9vh,11px); font-weight:600; font-variant-numeric:tabular-nums; }
 
   /* on the phones */
-  .tvwho{ display:flex; flex-direction:column; flex:0.85 1 0; min-height:0; }
+  .tvwho{ display:flex; flex-direction:column; flex:1 1 auto; min-height:0; }
   .tvwho-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:clamp(7px,0.9vh,13px); flex:0 0 auto; gap:8px; }
   .tvwho-title{ font-size:clamp(12px,1.5vh,19px); font-weight:800; }
   .tvwho-count{ display:flex; gap:clamp(7px,0.75vw,13px); align-items:baseline; }
@@ -327,7 +327,7 @@
 
   /* right column: "on the phones" above, "calls today" below, sharing the space */
   .tvright{ display:flex; flex-direction:column; gap:clamp(8px,0.8vw,15px); min-height:0; }
-  .tvcallstoday{ flex:1.6 1 0; max-height:none; }
+  .tvcallstoday{ flex:0 0 auto; max-height:clamp(220px,32vh,300px); }
   .tvcalls-list{ display:flex; flex-direction:column; overflow:hidden; flex:1 1 auto; min-height:0; }
   /* row height/font sizes are set inline per render (renderTVCallsToday) so
      the whole roster always fits the panel's fixed height — dense on a busy
@@ -3528,14 +3528,15 @@ function renderTVWho(){
 // silently clipping names off the bottom, a quiet day gets bigger, more
 // readable rows instead of looking sparse. Only once the roster is so large
 // that even minimum-size rows don't fit does the list fall back to scrolling.
-const TVC_ROW_MIN = 18, TVC_ROW_MAX = 44;
+const TVC_ROW_MIN = 18, TVC_ROW_MAX = 44, TVC_MAX_ROWS = 5;
 function renderTVCallsToday(){
   const listEl = document.getElementById('tvCallsTodayList');
   const noteEl = document.getElementById('tvCallsTodayNote');
   if(!listEl) return;
 
-  const data = computeCallsToday();
-  if(noteEl) noteEl.textContent = data.length ? `${data.reduce((s,a)=>s+a.count,0)} total` : '';
+  const all = computeCallsToday();
+  const data = all.slice(0, TVC_MAX_ROWS); // top 5 only — "On the phones" needs the room more
+  if(noteEl) noteEl.textContent = all.length ? `${all.reduce((s,a)=>s+a.count,0)} total` : '';
 
   if(!data.length){
     listEl.style.overflowY = '';
