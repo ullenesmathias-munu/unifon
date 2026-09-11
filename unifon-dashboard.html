@@ -250,29 +250,30 @@
   .tvcard-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:clamp(6px,0.8vh,11px); gap:10px; }
   .tvcard-title{ font-size:clamp(10.5px,1.2vh,14px); font-weight:600; color:var(--tvink2); }
 
-  /* top row: waiting hero + answered today */
-  .tvtop{ display:grid; grid-template-columns:2fr 1fr; gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
+  /* live column, top row: waiting hero (main focus) + answered today beside it */
+  .tvliverow{ display:grid; grid-template-columns:1.6fr 1fr; gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
   .tvhero, .tvtoday{
     background:var(--tvcard); border:1px solid var(--tvline); border-radius:clamp(8px,1vh,12px);
     box-shadow:0 1px 2px rgba(13,18,38,0.04);
-    padding:clamp(10px,1.2vh,18px) clamp(14px,1.3vw,24px);
+    padding:clamp(10px,1.2vh,18px) clamp(12px,1.2vw,20px);
     display:flex; align-items:center; position:relative; overflow:hidden;
   }
-  .tvhero{ gap:clamp(16px,1.8vw,34px); }
+  .tvhero{ gap:clamp(12px,1.5vw,26px); }
   .tvhero::after{ content:''; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--hero-c,var(--tvgreen)); }
   .tvtoday::after{ content:''; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--navy); }
-  .tvhero-main{ display:flex; align-items:baseline; gap:clamp(10px,1vw,18px); }
-  .tvhero-num{ font-family:'Fira Sans',sans-serif; font-weight:900; line-height:0.9; font-size:clamp(42px,7.4vh,96px); color:var(--hero-c,var(--tvgreen)); font-variant-numeric:tabular-nums; }
+  .tvhero-main{ display:flex; align-items:baseline; gap:clamp(8px,0.9vw,16px); }
+  .tvhero-num{ font-family:'Fira Sans',sans-serif; font-weight:900; line-height:0.9; font-size:clamp(38px,6.6vh,88px); color:var(--hero-c,var(--tvgreen)); font-variant-numeric:tabular-nums; }
   .tvhero-txt{ display:flex; flex-direction:column; }
   .tvhero-lbl{ font-size:clamp(11px,1.5vh,19px); font-weight:700; line-height:1.15; }
   .tvhero-sub{ font-size:clamp(9px,1.05vh,12.5px); color:var(--tvink2); margin-top:3px; }
-  .tvhero-side{ margin-left:auto; display:flex; gap:clamp(14px,1.5vw,30px); padding-left:clamp(14px,1.5vw,28px); border-left:1px solid var(--tvline); }
+  .tvhero-side{ margin-left:auto; display:flex; gap:clamp(10px,1.2vw,22px); padding-left:clamp(10px,1.2vw,20px); border-left:1px solid var(--tvline); }
   .tvhs{ display:flex; flex-direction:column; }
-  .tvhs-v{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:clamp(18px,2.5vh,32px); line-height:1; }
+  .tvhs-v{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:clamp(16px,2.2vh,28px); line-height:1; }
   .tvhs-l{ font-size:clamp(8px,0.9vh,10.5px); color:var(--tvink3); margin-top:4px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
 
-  /* main split */
-  .tvmain{ display:grid; grid-template-columns:2fr 1.35fr; gap:clamp(8px,0.8vw,15px); flex:1 1 auto; min-height:0; }
+  /* main split: weekly reporting (left) vs. live queue (right) */
+  .tvmain{ display:grid; grid-template-columns:1fr 1.15fr; gap:clamp(8px,0.8vw,15px); flex:1 1 auto; min-height:0; }
+  .tvleft{ display:flex; flex-direction:column; gap:clamp(8px,0.8vw,15px); min-height:0; }
   .tvpanel{ display:flex; flex-direction:column; min-height:0; }
 
   /* chart */
@@ -299,7 +300,7 @@
   .tvwho-count{ display:flex; gap:clamp(7px,0.75vw,13px); align-items:baseline; }
   .tvwc{ display:flex; align-items:baseline; gap:4px; font-size:clamp(8.5px,1vh,12px); color:var(--tvink2); font-weight:600; }
   .tvwc b{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:clamp(14px,1.9vh,24px); line-height:1; }
-  .tvwho-list{ display:flex; flex-direction:column; gap:clamp(4px,0.5vh,7px); overflow:hidden; flex:1 1 auto; min-height:0; }
+  .tvwho-list{ display:grid; grid-template-columns:repeat(2,1fr); gap:clamp(4px,0.5vh,7px) clamp(8px,0.8vw,14px); align-content:start; overflow:hidden; flex:1 1 auto; min-height:0; }
   .tvprow{
     display:flex; align-items:center; gap:clamp(8px,0.8vw,13px);
     border:1px solid var(--tvline); border-radius:9px;
@@ -325,9 +326,9 @@
   .tvtimer{ font-variant-numeric:tabular-nums; font-size:clamp(8.5px,1vh,12.5px); color:var(--tvink2); font-weight:600; }
   .tvlogoffs{ display:flex; align-items:center; gap:3px; font-variant-numeric:tabular-nums; font-size:clamp(8.5px,1vh,12.5px); color:var(--tvink2); font-weight:600; }
 
-  /* right column: "on the phones" above, "calls today" below, sharing the space */
+  /* right column (live): hero row on top, "on the phones" below it, "calls today" underneath */
   .tvright{ display:flex; flex-direction:column; gap:clamp(8px,0.8vw,15px); min-height:0; }
-  .tvcallstoday{ flex:0 0 auto; max-height:clamp(220px,32vh,300px); }
+  .tvcallstoday{ flex:0 0 auto; height:clamp(220px,30vh,280px); }
   .tvcalls-list{ display:flex; flex-direction:column; overflow:hidden; flex:1 1 auto; min-height:0; }
   /* row height/font sizes are set inline per render (renderTVCallsToday) so
      the whole roster always fits the panel's fixed height — dense on a busy
@@ -370,25 +371,29 @@
     </div>
   </div>
 
-  <div class="tvtop">
-    <div class="tvhero" id="tvHero"></div>
-    <div class="tvtoday" id="tvToday"></div>
-  </div>
-
   <div class="tvmain">
-    <div class="tvcard tvpanel">
-      <div class="tvcard-head">
-        <span class="tvcard-title">Calls answered &mdash; week so far</span>
-        <span class="tvcard-title" id="tvChartNote" style="color:var(--tvink3)"></span>
+    <div class="tvleft">
+      <div class="tvcard tvpanel">
+        <div class="tvcard-head">
+          <span class="tvcard-title">Calls answered &mdash; week so far</span>
+          <span class="tvcard-title" id="tvChartNote" style="color:var(--tvink3)"></span>
+        </div>
+        <div class="tvchart">
+          <div class="tvyaxis" id="tvYAxis"></div>
+          <div class="tvplot" id="tvPlot"><div class="tvbars" id="tvBars"></div></div>
+        </div>
+        <div class="tvnames" id="tvNames"><div class="tvnames-pad"></div></div>
       </div>
-      <div class="tvchart">
-        <div class="tvyaxis" id="tvYAxis"></div>
-        <div class="tvplot" id="tvPlot"><div class="tvbars" id="tvBars"></div></div>
-      </div>
-      <div class="tvnames" id="tvNames"><div class="tvnames-pad"></div></div>
+
+      <div class="tvkpis" id="tvKpis"></div>
     </div>
 
     <div class="tvright">
+      <div class="tvliverow">
+        <div class="tvhero" id="tvHero"></div>
+        <div class="tvtoday" id="tvToday"></div>
+      </div>
+
       <div class="tvcard tvwho">
         <div class="tvwho-head">
           <span class="tvwho-title">On the phones</span>
@@ -406,8 +411,6 @@
       </div>
     </div>
   </div>
-
-  <div class="tvkpis" id="tvKpis"></div>
 
 </div>
 
@@ -3057,7 +3060,7 @@ function renderLive(){
   }).join('');
 }
 
-setInterval(pollLive, 8000);
+setInterval(pollLive, 3000);
 setInterval(updateLiveAge, 1000);
 pollLive();
 
@@ -3485,7 +3488,7 @@ function renderTVWho(){
 
   const n = s => people.filter(p => p.state === s).length;
   if(countEl) countEl.innerHTML = `
-    <span class="tvwc"><b style="color:var(--tvgreen)">${n('free')}</b>available</span>
+    <span class="tvwc tvwc-ratio"><b style="color:var(--tvgreen)">${n('free')}/${people.length}</b>available</span>
     <span class="tvwc"><b style="color:var(--tvamber)">${n('call')}</b>on a call</span>
     <span class="tvwc"><b style="color:var(--tvred)">${n('off')}</b>off queue</span>`;
 
