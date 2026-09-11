@@ -2158,6 +2158,7 @@ let liveEvents    = [];
 let liveStatus    = null;
 let liveCalls     = null; // { ts, agents:[{name,queue,onCall}], calls:[{id,queue,answered,seconds}] } from /calls.json
 let liveAgentStats = null; // { ts, weekStart, agents:[{name,count}] } from /agent-stats.json — Unifon's own AgentReport totals
+let liveAgentStatsToday = null; // same, scoped to today, from /agent-stats-today.json
 let liveFilter    = 'All';
 const waitTimeSamples = []; // {ts, avgWait} — accumulated across polls today, for sparkline
 let liveConnected = false;
@@ -2909,17 +2910,19 @@ async function pollLive(){
   const statusEl = document.getElementById('liveStatus');
   const statusText = document.getElementById('liveStatusText');
   try{
-    const [res, sres, cres, ares] = await Promise.all([
+    const [res, sres, cres, ares, atres] = await Promise.all([
       fetch(liveUrl('events.json'), {cache:'no-store'}),
       fetch(liveUrl('status.json'), {cache:'no-store'}).catch(()=>null),
       fetch(liveUrl('calls.json'), {cache:'no-store'}).catch(()=>null),
       fetch(liveUrl('agent-stats.json'), {cache:'no-store'}).catch(()=>null),
+      fetch(liveUrl('agent-stats-today.json'), {cache:'no-store'}).catch(()=>null),
     ]);
     if(!res.ok) throw new Error('bad response');
     const fresh = await res.json();
     if(sres && sres.ok) liveStatus = await sres.json(); else liveStatus = null;
     if(cres && cres.ok) liveCalls = await cres.json(); else liveCalls = null;
     if(ares && ares.ok) liveAgentStats = await ares.json(); else liveAgentStats = null;
+    if(atres && atres.ok) liveAgentStatsToday = await atres.json(); else liveAgentStatsToday = null;
 
     // Accumulate wait-time sample for TV sparkline
     if(liveStatus && liveStatus.queues) {
@@ -3177,6 +3180,7 @@ function renderTVWeather(){
  *   liveStatus      /status.json      — queues + per-queue member lists
  *   liveCalls       /calls.json       — who is on a call, what is waiting
  *   liveAgentStats  /agent-stats.json — Unifon's own weekly AgentReport totals
+ *   liveAgentStatsToday /agent-stats-today.json — same, scoped to today
  *   liveEvents      /events.json      — queue login/logoff history
  */
 
@@ -3231,24 +3235,16 @@ function computeCallsAnsweredThisWeek(){
 }
 
 /* ---------- calls answered today, per agent ----------
- * Read straight from ALL_RECORDS' per-day agent totals — capture-server's own
- * report-agent-daily.json, pulled into ALL_RECORDS by refreshLiveReports()
- * every 30s, the same server-synced source tvAnsweredToday() already uses at
- * team level. Every device sees the same numbers.
- *
- * This used to be reconstructed client-side: agent-stats.json only exposes a
- * running Monday-through-now total, so "today" was faked by snapshotting that
- * running total into IndexedDB the first time each browser loaded the page
- * each day, then diffing later polls against it. Because that snapshot lived
- * per-device, a browser opened later in the day baselined *after* some of
- * today's calls had already landed — silently dropping those agents from
- * "today" on that device only, while a device opened earlier kept them.
+ * Same pattern as computeCallsAnsweredThisWeek(), just scoped to today:
+ * capture-server's own /agent-stats-today.json, Unifon's authoritative
+ * AgentReport totals from midnight-to-now. Every device sees the same
+ * numbers, and it updates on every 3s pollLive() cycle like the rest of
+ * the live panels.
  */
 function computeCallsToday(){
-  const todayKey = fmtDateDMY(Date.now());
-  return ALL_RECORDS
-    .filter(r => r.periodType === 'Day' && r.periodLabel === todayKey && r.answered > 0 && !hiddenAgents.includes(r.name))
-    .map(r => ({ name: r.name, count: r.answered }))
+  if(!liveAgentStatsToday || !liveAgentStatsToday.agents) return [];
+  return liveAgentStatsToday.agents
+    .filter(a => a.count > 0 && !hiddenAgents.includes(a.name))
     .sort((a,b) => b.count - a.count);
 }
 
@@ -3459,8 +3455,12 @@ function renderTVWho(){
     return;
   }
 
+  // Deliberately NOT filtering by tvQueueHidden here — someone on a call via a
+  // hidden queue (e.g. the evening/weekend "vakt" duty queue) is still on a
+  // call, and should never be shown as if they'd vanished. Hiding a queue only
+  // hides its login/logoff noise, not the fact that a person is on the phone.
   const onCallNames = new Set((liveCalls ? liveCalls.agents : [])
-    .filter(a => a.onCall && !tvQueueHidden(a.queue))
+    .filter(a => a.onCall)
     .map(a => a.name));
   tvTrackCallState(onCallNames);
 
@@ -3504,7 +3504,10 @@ function renderTVWho(){
     if(p.state === 'call'){
       const since = tvCallSince.get(p.name);
       const t = since ? `<span class="tvtimer">${tvFmtSince(Date.now()-since)}</span>` : '';
-      badge = `${t}<span class="tvbadge busy"><i></i>On a call</span>`;
+      // A call can run long enough (or be on a hidden queue) that the person
+      // is also logged off — surface both facts instead of hiding one.
+      const offTag = onQueue.has(p.name) ? '' : `<span class="tvbadge gone"><i></i>Off queue</span>`;
+      badge = `${t}<span class="tvbadge busy"><i></i>On a call</span>${offTag}`;
     } else if(p.state === 'off'){
       const off = lastOff.get(p.name);
       const t = off ? `<span class="tvtimer">off ${tvFmtSince(Date.now()-off)}</span>` : '';
