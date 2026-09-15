@@ -343,15 +343,15 @@
   .tvlcount{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:clamp(13px,1.7vh,22px); flex:0 0 auto; font-variant-numeric:tabular-nums; }
 
   /* kpis */
-  .tvkpis{ display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
+  .tvkpis{ display:grid; grid-template-columns:repeat(2,1fr); gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
   .tvkpi{
     background:var(--tvcard); border:1px solid var(--tvline); border-radius:clamp(8px,1vh,12px);
-    padding:clamp(9px,1.1vh,17px) clamp(14px,1.3vw,24px);
+    padding:clamp(6px,0.6vh,10px) clamp(14px,1.3vw,24px);
     box-shadow:0 1px 2px rgba(13,18,38,0.04);
   }
-  .tvkval{ font-size:clamp(22px,3vh,42px); font-weight:800; line-height:1; }
+  .tvkval{ font-size:clamp(16px,1.9vh,28px); font-weight:800; line-height:1; }
   .tvkval.good{ color:var(--tvgreen); }
-  .tvklbl{ font-size:clamp(9px,1.05vh,13px); color:var(--tvink2); margin-top:5px; }
+  .tvklbl{ font-size:clamp(8.5px,0.95vh,11.5px); color:var(--tvink2); margin-top:3px; }
 
   .tv-empty{ font-size:clamp(10px,1.2vh,14px); color:var(--tvink3); padding:8px 0; }
 </style>
@@ -3608,16 +3608,6 @@ function renderTVKpis(){
   const data = computeCallsAnsweredThisWeek();
   const totalCalls = data.reduce((s,d) => s + d.count, 0);
 
-  // Weighted by each agent's call count, so a low-volume agent's long calls
-  // don't skew the team average.
-  let talkNum = 0, talkDen = 0;
-  for(const d of data){
-    if(d.avgDurationMin == null) continue;
-    talkNum += d.avgDurationMin * d.count;
-    talkDen += d.count;
-  }
-  const avgTalk = talkDen > 0 ? talkNum/talkDen : null;
-
   // Answer rate for the week from the stored MainReport days.
   const monday = mondayOf(Date.now()).getTime();
   let wkAnswered = 0, wkTotal = 0;
@@ -3635,7 +3625,6 @@ function renderTVKpis(){
   const kpis = [
     { v: totalCalls || '—', l: 'Calls answered this week' },
     { v: rate === null ? '—' : rate.toFixed(0)+'%', l: 'Answer rate this week', cls: rate !== null ? 'good' : '' },
-    { v: avgTalk === null ? '—' : fmtDur(avgTalk*60), l: 'Avg handle time this week' },
   ];
   el.innerHTML = kpis.map(k =>
     `<div class="tvkpi"><div class="tvkval ${k.cls||''}">${k.v}</div><div class="tvklbl">${k.l}</div></div>`).join('');
