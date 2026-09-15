@@ -298,8 +298,11 @@
   .tvnstats{ margin-top:clamp(3px,0.5vh,7px); width:100%; border:1px solid var(--tvline); border-radius:6px; padding:clamp(3px,0.4vh,5px) 2px; display:flex; flex-direction:column; gap:clamp(1px,0.2vh,3px); }
   .tvnstat{ display:flex; align-items:center; justify-content:center; gap:4px; font-size:clamp(7.5px,0.9vh,11px); font-weight:600; font-variant-numeric:tabular-nums; }
 
+  /* right column: on-the-phones roster + today's leaderboard, stacked */
+  .tvright{ display:flex; flex-direction:column; gap:clamp(8px,0.8vw,15px); min-height:0; }
+
   /* on the phones */
-  .tvwho{ display:flex; flex-direction:column; flex:1 1 auto; min-height:0; }
+  .tvwho{ display:flex; flex-direction:column; flex:1.4 1 0; min-height:0; }
   .tvwho-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:clamp(7px,0.9vh,13px); flex:0 0 auto; gap:8px; }
   .tvwho-title{ font-size:clamp(12px,1.5vh,19px); font-weight:800; }
   .tvwho-count{ display:flex; gap:clamp(7px,0.75vw,13px); align-items:baseline; }
@@ -329,6 +332,15 @@
   .tvbadge.gone{ background:#FBE0E3; color:#A61B26; }
   .tvbadge i{ width:7px; height:7px; border-radius:50%; display:inline-block; background:currentColor; }
   .tvtimer{ font-variant-numeric:tabular-nums; font-size:clamp(8.5px,1vh,12.5px); color:var(--tvink2); font-weight:600; }
+
+  /* today's leaderboard */
+  .tvleaders{ display:flex; flex-direction:column; flex:1 1 0; min-height:0; }
+  .tvleader-list{ display:flex; flex-direction:column; gap:clamp(3px,0.4vh,6px); overflow:hidden; flex:1 1 auto; min-height:0; }
+  .tvlrow{ display:flex; align-items:center; gap:clamp(7px,0.7vw,11px); }
+  .tvlrank{ width:clamp(13px,1.5vh,18px); flex:0 0 auto; text-align:center; font-weight:800; color:var(--tvink3); font-size:clamp(9px,1.05vh,12.5px); }
+  .tvlav{ width:clamp(20px,2.5vh,32px); height:clamp(20px,2.5vh,32px); font-size:clamp(8.5px,1.05vh,13px); }
+  .tvlname{ flex:1 1 auto; min-width:0; font-size:clamp(10px,1.25vh,15px); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tvlcount{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:clamp(13px,1.7vh,22px); flex:0 0 auto; font-variant-numeric:tabular-nums; }
 
   /* kpis */
   .tvkpis{ display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
@@ -378,12 +390,21 @@
       <div class="tvnames" id="tvNames"><div class="tvnames-pad"></div></div>
     </div>
 
-    <div class="tvcard tvwho">
-      <div class="tvwho-head">
-        <span class="tvwho-title">On the phones</span>
-        <span class="tvwho-count" id="tvWhoCount"></span>
+    <div class="tvright">
+      <div class="tvcard tvwho">
+        <div class="tvwho-head">
+          <span class="tvwho-title">On the phones</span>
+          <span class="tvwho-count" id="tvWhoCount"></span>
+        </div>
+        <div class="tvwho-list" id="tvWhoList"></div>
       </div>
-      <div class="tvwho-list" id="tvWhoList"></div>
+
+      <div class="tvcard tvleaders">
+        <div class="tvwho-head">
+          <span class="tvwho-title">Calls today</span>
+        </div>
+        <div class="tvleader-list" id="tvLeaderList"></div>
+      </div>
     </div>
   </div>
 
@@ -2135,6 +2156,7 @@ let liveEvents    = [];
 let liveStatus    = null;
 let liveCalls     = null; // { ts, agents:[{name,queue,onCall}], calls:[{id,queue,answered,seconds}] } from /calls.json
 let liveAgentStats = null; // { ts, weekStart, agents:[{name,count}] } from /agent-stats.json — Unifon's own AgentReport totals
+let liveAgentStatsToday = null; // same shape, scoped to today, from /agent-stats-today.json
 let liveFilter    = 'All';
 const waitTimeSamples = []; // {ts, avgWait} — accumulated across polls today, for sparkline
 let liveConnected = false;
@@ -2895,17 +2917,19 @@ async function pollLive(){
   const statusEl = document.getElementById('liveStatus');
   const statusText = document.getElementById('liveStatusText');
   try{
-    const [res, sres, cres, ares] = await Promise.all([
+    const [res, sres, cres, ares, tres] = await Promise.all([
       fetch(liveUrl('events.json'), {cache:'no-store'}),
       fetch(liveUrl('status.json'), {cache:'no-store'}).catch(()=>null),
       fetch(liveUrl('calls.json'), {cache:'no-store'}).catch(()=>null),
       fetch(liveUrl('agent-stats.json'), {cache:'no-store'}).catch(()=>null),
+      fetch(liveUrl('agent-stats-today.json'), {cache:'no-store'}).catch(()=>null),
     ]);
     if(!res.ok) throw new Error('bad response');
     const fresh = await res.json();
     if(sres && sres.ok) liveStatus = await sres.json(); else liveStatus = null;
     if(cres && cres.ok) liveCalls = await cres.json(); else liveCalls = null;
     if(ares && ares.ok) liveAgentStats = await ares.json(); else liveAgentStats = null;
+    if(tres && tres.ok) liveAgentStatsToday = await tres.json(); else liveAgentStatsToday = null;
 
     // Accumulate wait-time sample for TV sparkline
     if(liveStatus && liveStatus.queues) {
@@ -3197,6 +3221,15 @@ function computeCallsAnsweredThisWeek(){
     .sort((a,b) => b.count - a.count);
 }
 
+// Same as computeCallsAnsweredThisWeek but scoped to today (00:00 through
+// now), from /agent-stats-today.json — the "On the phones" leaderboard.
+function computeCallsAnsweredToday(){
+  if(!liveAgentStatsToday || !liveAgentStatsToday.agents) return [];
+  return liveAgentStatsToday.agents
+    .filter(a => a.count > 0 && !hiddenAgents.includes(a.name))
+    .sort((a,b) => b.count - a.count);
+}
+
 /* ---------- how long each agent has been in their current state ----------
  * /calls.json reports *whether* an agent is on a call but not since when, so
  * the first time we see someone pick up we note the timestamp and count from
@@ -3305,6 +3338,7 @@ function renderTV(){
   renderTVHero();
   renderTVToday();
   renderTVWho();
+  renderTVLeaders();
   renderTVChart();
   renderTVKpis();
 }
@@ -3482,6 +3516,34 @@ function renderTVWho(){
         <span class="tvav" style="background:${c}">${tvInitials(p.name)}</span>
         <span class="tvpname">${p.name}</span>
         <span class="tvpstat">${badge}</span>
+      </div>`;
+  }).join('');
+}
+
+/* ---------- today's leaderboard ---------- */
+function renderTVLeaders(){
+  const listEl = document.getElementById('tvLeaderList');
+  if(!listEl) return;
+
+  if(!liveConnected){
+    listEl.innerHTML = '<div class="tv-empty">Waiting for capture server…</div>';
+    return;
+  }
+
+  const data = computeCallsAnsweredToday();
+  if(!data.length){
+    listEl.innerHTML = '<div class="tv-empty">No calls answered yet today</div>';
+    return;
+  }
+
+  listEl.innerHTML = data.map((d,i) => {
+    const c = tvColorFor(d.name);
+    return `
+      <div class="tvlrow">
+        <span class="tvlrank">${i+1}</span>
+        <span class="tvav tvlav" style="background:${c}">${tvInitials(d.name)}</span>
+        <span class="tvlname">${d.name}</span>
+        <span class="tvlcount" style="color:${c}">${d.count}</span>
       </div>`;
   }).join('');
 }
