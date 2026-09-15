@@ -250,31 +250,36 @@
   .tvcard-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:clamp(6px,0.8vh,11px); gap:10px; }
   .tvcard-title{ font-size:clamp(10.5px,1.2vh,14px); font-weight:600; color:var(--tvink2); }
 
-  /* live column, top row: waiting hero (main focus) + answered today beside it */
-  .tvliverow{ display:grid; grid-template-columns:1.6fr 1fr; gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
+  /* top row: waiting hero + answered today */
+  .tvtop{ display:grid; grid-template-columns:2fr 1fr; gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
   .tvhero, .tvtoday{
     background:var(--tvcard); border:1px solid var(--tvline); border-radius:clamp(8px,1vh,12px);
     box-shadow:0 1px 2px rgba(13,18,38,0.04);
-    padding:clamp(10px,1.2vh,18px) clamp(12px,1.2vw,20px);
+    padding:clamp(10px,1.2vh,18px) clamp(14px,1.3vw,24px);
     display:flex; align-items:center; position:relative; overflow:hidden;
   }
-  .tvhero{ gap:clamp(12px,1.5vw,26px); }
+  .tvhero{ gap:clamp(16px,1.8vw,34px); }
   .tvhero::after{ content:''; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--hero-c,var(--tvgreen)); }
   .tvtoday::after{ content:''; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--navy); }
-  .tvhero-main{ display:flex; align-items:baseline; gap:clamp(8px,0.9vw,16px); }
-  .tvhero-num{ font-family:'Fira Sans',sans-serif; font-weight:900; line-height:0.9; font-size:clamp(38px,6.6vh,88px); color:var(--hero-c,var(--tvgreen)); font-variant-numeric:tabular-nums; }
+  .tvhero-main{ display:flex; align-items:baseline; gap:clamp(10px,1vw,18px); }
+  .tvhero-num{ font-family:'Fira Sans',sans-serif; font-weight:900; line-height:0.9; font-size:clamp(42px,7.4vh,96px); color:var(--hero-c,var(--tvgreen)); font-variant-numeric:tabular-nums; }
+  /* Used by the "Answered today" number instead of an inline color style —
+     browser dark-mode extensions (e.g. Dark Reader) intercept and override
+     inline color styles per-element, which was making this text invisible
+     against the TV view's always-light background. A stylesheet rule isn't
+     targeted the same way. */
+  .tvhero-num.tvtoday-num{ color:var(--tvink1); font-size:clamp(30px,4.6vh,58px); }
   .tvhero-txt{ display:flex; flex-direction:column; }
   .tvhero-lbl{ font-size:clamp(11px,1.5vh,19px); font-weight:700; line-height:1.15; }
   .tvhero-sub{ font-size:clamp(9px,1.05vh,12.5px); color:var(--tvink2); margin-top:3px; }
-  .tvhero-side{ margin-left:auto; display:flex; gap:clamp(10px,1.2vw,22px); padding-left:clamp(10px,1.2vw,20px); border-left:1px solid var(--tvline); }
+  .tvhero-side{ margin-left:auto; display:flex; gap:clamp(14px,1.5vw,30px); padding-left:clamp(14px,1.5vw,28px); border-left:1px solid var(--tvline); }
   .tvhs{ display:flex; flex-direction:column; }
-  .tvhs-v{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:clamp(16px,2.2vh,28px); line-height:1; }
+  .tvhs-v{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:clamp(18px,2.5vh,32px); line-height:1; }
   .tvhs-l{ font-size:clamp(8px,0.9vh,10.5px); color:var(--tvink3); margin-top:4px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
 
-  /* main split: weekly reporting (left) vs. live queue (right) */
-  .tvmain{ display:grid; grid-template-columns:1fr 1.15fr; gap:clamp(8px,0.8vw,15px); flex:1 1 auto; min-height:0; }
-  .tvleft{ display:flex; flex-direction:column; gap:clamp(8px,0.8vw,15px); min-height:0; }
-  .tvpanel{ display:flex; flex-direction:column; min-height:0; flex:1 1 auto; }
+  /* main split */
+  .tvmain{ display:grid; grid-template-columns:2fr 1.35fr; gap:clamp(8px,0.8vw,15px); flex:1 1 auto; min-height:0; }
+  .tvpanel{ display:flex; flex-direction:column; min-height:0; }
 
   /* chart */
   .tvchart{ display:flex; flex:1 1 auto; min-height:0; }
@@ -300,7 +305,7 @@
   .tvwho-count{ display:flex; gap:clamp(7px,0.75vw,13px); align-items:baseline; }
   .tvwc{ display:flex; align-items:baseline; gap:4px; font-size:clamp(8.5px,1vh,12px); color:var(--tvink2); font-weight:600; }
   .tvwc b{ font-family:'Fira Sans',sans-serif; font-weight:900; font-size:clamp(14px,1.9vh,24px); line-height:1; }
-  .tvwho-list{ display:grid; grid-template-columns:repeat(2,1fr); gap:clamp(4px,0.5vh,7px) clamp(8px,0.8vw,14px); align-content:start; overflow:hidden; flex:1 1 auto; min-height:0; }
+  .tvwho-list{ display:flex; flex-direction:column; gap:clamp(4px,0.5vh,7px); overflow:hidden; flex:1 1 auto; min-height:0; }
   .tvprow{
     display:flex; align-items:center; gap:clamp(8px,0.8vw,13px);
     border:1px solid var(--tvline); border-radius:9px;
@@ -324,33 +329,17 @@
   .tvbadge.gone{ background:#FBE0E3; color:#A61B26; }
   .tvbadge i{ width:7px; height:7px; border-radius:50%; display:inline-block; background:currentColor; }
   .tvtimer{ font-variant-numeric:tabular-nums; font-size:clamp(8.5px,1vh,12.5px); color:var(--tvink2); font-weight:600; }
-  .tvlogoffs{ display:flex; align-items:center; gap:3px; font-variant-numeric:tabular-nums; font-size:clamp(8.5px,1vh,12.5px); color:var(--tvink2); font-weight:600; }
-
-  /* right column (live): hero row on top, "on the phones" below it, "calls today" underneath */
-  .tvright{ display:flex; flex-direction:column; gap:clamp(8px,0.8vw,15px); min-height:0; }
-  .tvcallstoday{ flex:0 0 auto; height:clamp(220px,30vh,280px); }
-  .tvcalls-list{ display:flex; flex-direction:column; overflow:hidden; flex:1 1 auto; min-height:0; }
-  /* row height/font sizes are set inline per render (renderTVCallsToday) so
-     the whole roster always fits the panel's fixed height — dense on a busy
-     day, roomier on a quiet one — rather than a fixed size that clips names. */
-  .tvcrow{ display:flex; align-items:center; border-radius:8px; }
-  .tvcname{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:0; }
-  .tvccount{ margin-left:auto; display:flex; align-items:center; gap:4px; flex:0 0 auto; font-family:'Fira Sans',sans-serif; font-weight:800; color:var(--tvink1); }
-  .tvcrow.top{ background:#FFF7E0; border:1px solid #F3D98B; }
-  .tvcrow.top .tvcname{ font-weight:800; }
-  .tvcrow.top .tvccount{ color:#9A6206; }
-  .tvcrow-crown{ flex:0 0 auto; line-height:1; }
 
   /* kpis */
-  .tvkpis{ display:grid; grid-template-columns:repeat(2,1fr); gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
+  .tvkpis{ display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(8px,0.8vw,15px); flex:0 0 auto; }
   .tvkpi{
     background:var(--tvcard); border:1px solid var(--tvline); border-radius:clamp(8px,1vh,12px);
-    padding:clamp(6px,0.7vh,11px) clamp(12px,1.1vw,20px);
+    padding:clamp(9px,1.1vh,17px) clamp(14px,1.3vw,24px);
     box-shadow:0 1px 2px rgba(13,18,38,0.04);
   }
-  .tvkval{ font-size:clamp(16px,2vh,28px); font-weight:800; line-height:1; }
+  .tvkval{ font-size:clamp(22px,3vh,42px); font-weight:800; line-height:1; }
   .tvkval.good{ color:var(--tvgreen); }
-  .tvklbl{ font-size:clamp(8px,0.85vh,11px); color:var(--tvink2); margin-top:3px; }
+  .tvklbl{ font-size:clamp(9px,1.05vh,13px); color:var(--tvink2); margin-top:5px; }
 
   .tv-empty{ font-size:clamp(10px,1.2vh,14px); color:var(--tvink3); padding:8px 0; }
 </style>
@@ -371,46 +360,34 @@
     </div>
   </div>
 
-  <div class="tvmain">
-    <div class="tvleft">
-      <div class="tvcard tvpanel">
-        <div class="tvcard-head">
-          <span class="tvcard-title">Calls answered &mdash; week so far</span>
-          <span class="tvcard-title" id="tvChartNote" style="color:var(--tvink3)"></span>
-        </div>
-        <div class="tvchart">
-          <div class="tvyaxis" id="tvYAxis"></div>
-          <div class="tvplot" id="tvPlot"><div class="tvbars" id="tvBars"></div></div>
-        </div>
-        <div class="tvnames" id="tvNames"><div class="tvnames-pad"></div></div>
-      </div>
+  <div class="tvtop">
+    <div class="tvhero" id="tvHero"></div>
+    <div class="tvtoday" id="tvToday"></div>
+  </div>
 
-      <div class="tvkpis" id="tvKpis"></div>
+  <div class="tvmain">
+    <div class="tvcard tvpanel">
+      <div class="tvcard-head">
+        <span class="tvcard-title">Calls answered &mdash; week so far</span>
+        <span class="tvcard-title" id="tvChartNote" style="color:var(--tvink3)"></span>
+      </div>
+      <div class="tvchart">
+        <div class="tvyaxis" id="tvYAxis"></div>
+        <div class="tvplot" id="tvPlot"><div class="tvbars" id="tvBars"></div></div>
+      </div>
+      <div class="tvnames" id="tvNames"><div class="tvnames-pad"></div></div>
     </div>
 
-    <div class="tvright">
-      <div class="tvliverow">
-        <div class="tvhero" id="tvHero"></div>
-        <div class="tvtoday" id="tvToday"></div>
+    <div class="tvcard tvwho">
+      <div class="tvwho-head">
+        <span class="tvwho-title">On the phones</span>
+        <span class="tvwho-count" id="tvWhoCount"></span>
       </div>
-
-      <div class="tvcard tvwho">
-        <div class="tvwho-head">
-          <span class="tvwho-title">On the phones</span>
-          <span class="tvwho-count" id="tvWhoCount"></span>
-        </div>
-        <div class="tvwho-list" id="tvWhoList"></div>
-      </div>
-
-      <div class="tvcard tvpanel tvcallstoday">
-        <div class="tvcard-head">
-          <span class="tvcard-title">Calls today</span>
-          <span class="tvcard-title" id="tvCallsTodayNote" style="color:var(--tvink3)"></span>
-        </div>
-        <div class="tvcalls-list" id="tvCallsTodayList"></div>
-      </div>
+      <div class="tvwho-list" id="tvWhoList"></div>
     </div>
   </div>
+
+  <div class="tvkpis" id="tvKpis"></div>
 
 </div>
 
@@ -2158,7 +2135,6 @@ let liveEvents    = [];
 let liveStatus    = null;
 let liveCalls     = null; // { ts, agents:[{name,queue,onCall}], calls:[{id,queue,answered,seconds}] } from /calls.json
 let liveAgentStats = null; // { ts, weekStart, agents:[{name,count}] } from /agent-stats.json — Unifon's own AgentReport totals
-let liveAgentStatsToday = null; // same, scoped to today, from /agent-stats-today.json
 let liveFilter    = 'All';
 const waitTimeSamples = []; // {ts, avgWait} — accumulated across polls today, for sparkline
 let liveConnected = false;
@@ -2281,7 +2257,7 @@ function visibleAttendanceNames(){
   return allAttendanceNames().filter(n => !hiddenAgents.includes(n));
 }
 
-async function loadScheduleAndHiddenAgents(){
+async function loadScheduleThenRender(){
   try{
     const res = await fetch(liveUrl('schedule.json'), {cache:'no-store'});
     if(res.ok) schedule = await res.json();
@@ -2290,10 +2266,6 @@ async function loadScheduleAndHiddenAgents(){
     const res = await fetch(liveUrl('hidden-agents.json'), {cache:'no-store'});
     if(res.ok) hiddenAgents = await res.json();
   }catch(e){ /* keep whatever hidden list we already have client-side */ }
-}
-
-async function loadScheduleThenRender(){
-  await loadScheduleAndHiddenAgents();
   renderAttendance();
 }
 
@@ -2608,6 +2580,19 @@ function countLogoffsByDayName(){
   return counts;
 }
 
+// Same definition as countLogoffsByDayName, summed across the whole week
+// (Monday 00:00 through now) instead of bucketed per day — for the TV
+// "Most calls answered this week" panel.
+function computeLogoffsThisWeek(){
+  const weekStart = mondayOf(Date.now()).getTime();
+  const counts = new Map(); // name -> count
+  for(const e of liveEvents){
+    if(e.direction !== 'out' || hiddenAgents.includes(e.name) || e.ts < weekStart) continue;
+    counts.set(e.name, (counts.get(e.name) || 0) + 1);
+  }
+  return counts;
+}
+
 // Total time `name` was logged in on ANY queue, overlapping [rangeStart, rangeEnd]
 // (all ms epoch). Merges overlapping queue sessions with a counter so being on
 // two queues at once isn't double-counted, and treats a session with no closing
@@ -2910,19 +2895,17 @@ async function pollLive(){
   const statusEl = document.getElementById('liveStatus');
   const statusText = document.getElementById('liveStatusText');
   try{
-    const [res, sres, cres, ares, atres] = await Promise.all([
+    const [res, sres, cres, ares] = await Promise.all([
       fetch(liveUrl('events.json'), {cache:'no-store'}),
       fetch(liveUrl('status.json'), {cache:'no-store'}).catch(()=>null),
       fetch(liveUrl('calls.json'), {cache:'no-store'}).catch(()=>null),
       fetch(liveUrl('agent-stats.json'), {cache:'no-store'}).catch(()=>null),
-      fetch(liveUrl('agent-stats-today.json'), {cache:'no-store'}).catch(()=>null),
     ]);
     if(!res.ok) throw new Error('bad response');
     const fresh = await res.json();
     if(sres && sres.ok) liveStatus = await sres.json(); else liveStatus = null;
     if(cres && cres.ok) liveCalls = await cres.json(); else liveCalls = null;
     if(ares && ares.ok) liveAgentStats = await ares.json(); else liveAgentStats = null;
-    if(atres && atres.ok) liveAgentStatsToday = await atres.json(); else liveAgentStatsToday = null;
 
     // Accumulate wait-time sample for TV sparkline
     if(liveStatus && liveStatus.queues) {
@@ -3063,7 +3046,7 @@ function renderLive(){
   }).join('');
 }
 
-setInterval(pollLive, 3000);
+setInterval(pollLive, 8000);
 setInterval(updateLiveAge, 1000);
 pollLive();
 
@@ -3102,12 +3085,6 @@ function initTV(){
   // Weather — fetch now and every 10 minutes
   fetchWeather();
   setInterval(fetchWeather, 600000);
-
-  // hidden-agents (who to leave off entirely) drives most of the TV view —
-  // load now and re-poll periodically so a hide/unhide shows up without
-  // reloading the TV tab.
-  loadScheduleAndHiddenAgents().then(renderTVWho);
-  setInterval(() => loadScheduleAndHiddenAgents().then(renderTVWho), 5 * 60 * 1000);
 
   // The "on a call" / "off queue" durations and the stale-data warning need to
   // count up every second; the live poll itself only runs every 8s.
@@ -3180,7 +3157,6 @@ function renderTVWeather(){
  *   liveStatus      /status.json      — queues + per-queue member lists
  *   liveCalls       /calls.json       — who is on a call, what is waiting
  *   liveAgentStats  /agent-stats.json — Unifon's own weekly AgentReport totals
- *   liveAgentStatsToday /agent-stats-today.json — same, scoped to today
  *   liveEvents      /events.json      — queue login/logoff history
  */
 
@@ -3192,31 +3168,15 @@ function tvQueueHidden(name){
 }
 
 // One stable colour per agent, assigned by name so a person keeps their colour
-// between refreshes even as the ranking reshuffles. Sampled from the team's
-// Zendesk "Tickets Solved" chart so the TV view reads consistently with it.
-// Hashing the name straight into a hue (rather than picking from a small
-// fixed palette) spreads agents across the full color wheel, so colors look
-// essentially arbitrary while still being the same for a given person every
-// time — no palette to maintain, and no realistic limit on team size.
+// between refreshes even as the ranking reshuffles.
+const TV_PALETTE = ['#3B82F6','#10B981','#F59E0B','#A855F7','#EC4899','#06B6D4','#E11D48','#84CC16','#0EA5E9','#F97316','#8B5CF6','#14B8A6'];
 function tvColorFor(name){
   let h = 0;
   for(let i=0;i<name.length;i++) h = (h*31 + name.charCodeAt(i)) >>> 0;
-  return `hsl(${h % 360}, 68%, 42%)`;
+  return TV_PALETTE[h % TV_PALETTE.length];
 }
 function tvInitials(name){
   return name.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase();
-}
-
-// First name alone, unless someone else in the list shares it (e.g. two
-// Mathiases) — then disambiguate as "Mathias.M" / "Mathias.U" using the
-// initial of each one's last name.
-function tvShortDisplayName(name, allNames){
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  const first = words[0] || name;
-  if(words.length < 2) return first;
-  const collides = allNames.some(other => other !== name && other.trim().split(/\s+/)[0] === first);
-  if(!collides) return first;
-  return first + '.' + words[words.length-1][0].toUpperCase();
 }
 
 const TV_ICON = {
@@ -3226,25 +3186,14 @@ const TV_ICON = {
 };
 
 // Per-agent answered-call counts, Monday-of-this-week through now — Unifon's
-// own AgentReport totals via capture-server's /agent-stats.json.
+// own AgentReport totals via capture-server's /agent-stats.json. Logoffs are
+// ours (computeLogoffsThisWeek, from events.json).
 function computeCallsAnsweredThisWeek(){
   if(!liveAgentStats || !liveAgentStats.agents) return [];
+  const logoffs = computeLogoffsThisWeek();
   return liveAgentStats.agents
     .filter(a => a.count > 0 && !hiddenAgents.includes(a.name))
-    .sort((a,b) => b.count - a.count);
-}
-
-/* ---------- calls answered today, per agent ----------
- * Same pattern as computeCallsAnsweredThisWeek(), just scoped to today:
- * capture-server's own /agent-stats-today.json, Unifon's authoritative
- * AgentReport totals from midnight-to-now. Every device sees the same
- * numbers, and it updates on every 3s pollLive() cycle like the rest of
- * the live panels.
- */
-function computeCallsToday(){
-  if(!liveAgentStatsToday || !liveAgentStatsToday.agents) return [];
-  return liveAgentStatsToday.agents
-    .filter(a => a.count > 0 && !hiddenAgents.includes(a.name))
+    .map(a => ({ ...a, logoffs: logoffs.get(a.name) || 0 }))
     .sort((a,b) => b.count - a.count);
 }
 
@@ -3273,40 +3222,67 @@ function tvFmtSince(ms){
   return Math.floor(m/60)+'h '+(m%60)+'m';
 }
 
-// Everyone the capture server has ever seen log onto a visible queue (minus
-// hidden agents) — so a new starter shows up automatically the first time they
-// log on, and there's no roster to maintain.
-function tvKnownAgents(){
-  const names = new Set();
-  for(const e of liveEvents){
-    if(tvQueueHidden(e.queue) || hiddenAgents.includes(e.name)) continue;
-    names.add(e.name);
-  }
-  if(liveStatus && liveStatus.queues){
-    for(const q of liveStatus.queues){
-      if(tvQueueHidden(q.description)) continue;
-      for(const n of [...(q.ready_agents||[]), ...(q.offline_agents||[])]){
-        if(!hiddenAgents.includes(n)) names.add(n);
-      }
+// Who belongs on the wallboard right now. Showing everyone who has *ever*
+// logged onto a queue means months of former staff and one-off cover sitting
+// there permanently red, which buries the people who are actually missing. So
+// the roster is scoped to today, from two directions:
+//   1. anyone who has been on a visible queue at some point today, and
+//   2. anyone whose scheduled day shift has already started and not yet ended.
+// (2) is what makes a genuine no-show visible; (1) covers unscheduled cover
+// and anyone the schedule doesn't know about. Everyone else is simply absent
+// from the board rather than shown as offline.
+//
+// Only day shifts (D1/D2/D3 — KØ Innenfor åpningstid) count towards (2):
+// E/H1/H2 run on KØ Vakt, which the TV deliberately hides, so the TV can't
+// see whether those agents are on queue and shouldn't accuse them of being off.
+function tvScheduledNow(now){
+  const due = new Set();
+  if(!schedule || typeof schedule !== 'object') return due;
+  const weekData = schedule[weekKeyFor(now.getTime())];
+  if(!weekData) return due;
+
+  const dayKey = WEEK_DAY_KEYS[(now.getDay() + 6) % 7]; // JS Sun=0 -> our mon-first keys
+  const minsNow = now.getHours()*60 + now.getMinutes();
+
+  for(const name of Object.keys(weekData)){
+    if(hiddenAgents.includes(name)) continue;
+    const entry = weekData[name];
+    if(!entry || typeof entry !== 'object') continue;
+    const code = entry[dayKey];
+    if(!code || code === 'SO') continue;
+
+    const def = SHIFT_DEFS[code];
+    if(!def || !def.start || !def.end) continue;
+    if(def.queue && tvQueueHidden(def.queue.replace('KØ ', 'Kø - '))) continue;
+    if(def.queue !== 'KØ Innenfor åpningstid') continue;
+
+    const [sh, sm] = def.start.split(':').map(Number);
+    const [eh, em] = def.end.split(':').map(Number);
+    let startMins = sh*60 + sm;
+    const endMins = eh*60 + em;
+
+    // Don't flag someone as missing before they're actually due — respects the
+    // same late-grace rules the Attendance tab uses (e.g. Wednesday meeting).
+    const grace = findLateGrace(code, now);
+    if(grace){
+      const [gh, gm] = grace.until.split(':').map(Number);
+      startMins = Math.max(startMins, gh*60 + gm);
     }
+
+    const onShift = endMins > startMins
+      ? (minsNow >= startMins && minsNow < endMins)
+      : (minsNow >= startMins || minsNow < endMins); // crosses midnight
+    if(onShift) due.add(name);
   }
-  return names;
+  return due;
 }
 
-// Agents who have logged onto a visible queue at least once today — this is
-// what makes someone appear in "On the phones" at all, alongside actually
-// being on a call or on queue right now. Being on today's Team Schedule isn't
-// enough on its own: an evening/weekend-only agent would otherwise show up
-// hours before their shift starts, as "off queue" with a stale logoff time
-// left over from a previous day — which reads as if something's wrong when
-// really they just haven't started yet. Resets naturally every day since
-// it's keyed by today's date.
-function tvLoggedInToday(){
-  const todayKey = fmtDateKey(Date.now());
+function tvActiveToday(){
   const names = new Set();
   for(const e of liveEvents){
-    if(e.direction !== 'in' || tvQueueHidden(e.queue) || hiddenAgents.includes(e.name)) continue;
-    if(fmtDateKey(e.ts) === todayKey) names.add(e.name);
+    if(!isToday(e.ts)) continue;
+    if(tvQueueHidden(e.queue) || hiddenAgents.includes(e.name)) continue;
+    names.add(e.name);
   }
   return names;
 }
@@ -3322,19 +3298,6 @@ function tvLastLogoffTs(){
   return last;
 }
 
-// How many times each agent has logged off a visible queue today — shown
-// live on "On the phones" instead of buried as a weekly stat under the chart.
-function tvLogoffCountsToday(){
-  const todayKey = fmtDateKey(Date.now());
-  const counts = new Map();
-  for(const e of liveEvents){
-    if(e.direction !== 'out' || tvQueueHidden(e.queue) || hiddenAgents.includes(e.name)) continue;
-    if(fmtDateKey(e.ts) !== todayKey) continue;
-    counts.set(e.name, (counts.get(e.name) || 0) + 1);
-  }
-  return counts;
-}
-
 function renderTV(){
   if(!IS_TV) return;
   renderTVWeather();
@@ -3342,7 +3305,6 @@ function renderTV(){
   renderTVHero();
   renderTVToday();
   renderTVWho();
-  renderTVCallsToday();
   renderTVChart();
   renderTVKpis();
 }
@@ -3419,7 +3381,7 @@ function renderTVToday(){
   const rate = tvAnswerRateToday();
   el.innerHTML = `
     <div class="tvhero-main">
-      <div class="tvhero-num" style="color:var(--tvink1); font-size:clamp(30px,4.6vh,58px)">${answered === null ? '—' : answered}</div>
+      <div class="tvhero-num tvtoday-num">${answered === null ? '—' : answered}</div>
       <div class="tvhero-txt">
         <div class="tvhero-lbl">Answered today</div>
         <div class="tvhero-sub">${rate === null ? 'Awaiting report data' : rate.toFixed(0) + '% answer rate'}</div>
@@ -3455,12 +3417,8 @@ function renderTVWho(){
     return;
   }
 
-  // Deliberately NOT filtering by tvQueueHidden here — someone on a call via a
-  // hidden queue (e.g. the evening/weekend "vakt" duty queue) is still on a
-  // call, and should never be shown as if they'd vanished. Hiding a queue only
-  // hides its login/logoff noise, not the fact that a person is on the phone.
   const onCallNames = new Set((liveCalls ? liveCalls.agents : [])
-    .filter(a => a.onCall)
+    .filter(a => a.onCall && !tvQueueHidden(a.queue))
     .map(a => a.name));
   tvTrackCallState(onCallNames);
 
@@ -3475,9 +3433,16 @@ function renderTVWho(){
   }
 
   const lastOff = tvLastLogoffTs();
-  const loggedInToday = tvLoggedInToday();
-  const people = Array.from(tvKnownAgents())
-    .filter(name => onCallNames.has(name) || onQueue.has(name) || loggedInToday.has(name))
+  // Roster = on queue now, or on a call now, or active earlier today, or due
+  // on a scheduled day shift right now. Anyone else isn't shown at all.
+  const roster = new Set([
+    ...onQueue,
+    ...onCallNames,
+    ...tvActiveToday(),
+    ...tvScheduledNow(new Date()),
+  ]);
+  const people = Array.from(roster)
+    .filter(name => !hiddenAgents.includes(name))
     .map(name => {
       const state = onCallNames.has(name) ? 'call' : onQueue.has(name) ? 'free' : 'off';
       return { name, state };
@@ -3488,26 +3453,22 @@ function renderTVWho(){
 
   const n = s => people.filter(p => p.state === s).length;
   if(countEl) countEl.innerHTML = `
-    <span class="tvwc tvwc-ratio"><b style="color:var(--tvgreen)">${n('free')}/${people.length}</b>available</span>
+    <span class="tvwc"><b style="color:var(--tvgreen)">${n('free')}</b>available</span>
     <span class="tvwc"><b style="color:var(--tvamber)">${n('call')}</b>on a call</span>
     <span class="tvwc"><b style="color:var(--tvred)">${n('off')}</b>off queue</span>`;
 
   if(!people.length){
-    listEl.innerHTML = '<div class="tv-empty">No one has logged onto the queue yet today</div>';
+    listEl.innerHTML = '<div class="tv-empty">No agents seen on queue yet</div>';
     return;
   }
 
-  const logoffCounts = tvLogoffCountsToday();
   listEl.innerHTML = people.map(p => {
     const c = tvColorFor(p.name);
     let badge;
     if(p.state === 'call'){
       const since = tvCallSince.get(p.name);
       const t = since ? `<span class="tvtimer">${tvFmtSince(Date.now()-since)}</span>` : '';
-      // A call can run long enough (or be on a hidden queue) that the person
-      // is also logged off — surface both facts instead of hiding one.
-      const offTag = onQueue.has(p.name) ? '' : `<span class="tvbadge gone"><i></i>Off queue</span>`;
-      badge = `${t}<span class="tvbadge busy"><i></i>On a call</span>${offTag}`;
+      badge = `${t}<span class="tvbadge busy"><i></i>On a call</span>`;
     } else if(p.state === 'off'){
       const off = lastOff.get(p.name);
       const t = off ? `<span class="tvtimer">off ${tvFmtSince(Date.now()-off)}</span>` : '';
@@ -3515,69 +3476,12 @@ function renderTVWho(){
     } else {
       badge = `<span class="tvbadge free"><i></i>Available</span>`;
     }
-    const logoffs = logoffCounts.get(p.name) || 0;
-    const logoffBadge = logoffs > 0
-      ? `<span class="tvlogoffs" title="Logged off queue ${logoffs} time${logoffs===1?'':'s'} today">${TV_ICON.off(c)}${logoffs}</span>`
-      : '';
     const cls = p.state === 'call' ? 'oncall' : p.state === 'off' ? 'offqueue' : '';
     return `
       <div class="tvprow ${cls}">
         <span class="tvav" style="background:${c}">${tvInitials(p.name)}</span>
         <span class="tvpname">${p.name}</span>
-        <span class="tvpstat">${logoffBadge}${badge}</span>
-      </div>`;
-  }).join('');
-}
-
-// Row sizing shrinks (or grows) to fit however many agents took a call today
-// into the panel's fixed height — a busy day gets denser rows instead of
-// silently clipping names off the bottom, a quiet day gets bigger, more
-// readable rows instead of looking sparse. Only once the roster is so large
-// that even minimum-size rows don't fit does the list fall back to scrolling.
-const TVC_ROW_MIN = 18, TVC_ROW_MAX = 44, TVC_MAX_ROWS = 5;
-function renderTVCallsToday(){
-  const listEl = document.getElementById('tvCallsTodayList');
-  const noteEl = document.getElementById('tvCallsTodayNote');
-  if(!listEl) return;
-
-  const all = computeCallsToday();
-  const data = all.slice(0, TVC_MAX_ROWS); // top 5 only — "On the phones" needs the room more
-  if(noteEl) noteEl.textContent = all.length ? `${all.reduce((s,a)=>s+a.count,0)} total` : '';
-
-  if(!data.length){
-    listEl.style.overflowY = '';
-    listEl.innerHTML = '<div class="tv-empty">No calls answered yet today</div>';
-    return;
-  }
-
-  const n = data.length;
-  const available = listEl.clientHeight || 300; // fallback before first layout
-  let rowH = available / (n + (n - 1) * 0.15);
-  rowH = Math.max(TVC_ROW_MIN, Math.min(TVC_ROW_MAX, rowH));
-  const gapPx = Math.max(2, Math.min(8, rowH * 0.15));
-  const fits = n * rowH + (n - 1) * gapPx <= available + 0.5; // +0.5 for rounding
-  listEl.style.overflowY = fits ? '' : 'auto';
-  if(!fits) rowH = TVC_ROW_MIN;
-
-  const avatarPx = Math.round(rowH * 0.62);
-  const nameFs = Math.round(rowH * 0.34);
-  const countFs = Math.round(rowH * 0.38);
-  const iconPx = Math.round(countFs * 0.72);
-  const padV = Math.max(1, Math.round(rowH * 0.1));
-  const padH = Math.max(3, Math.round(rowH * 0.15));
-
-  const maxCount = data[0].count;
-  listEl.style.gap = gapPx + 'px';
-  listEl.innerHTML = data.map(a => {
-    const c = tvColorFor(a.name);
-    const isTop = a.count === maxCount;
-    const icon = TV_ICON.calls(c).replace('width="10" height="10"', `width="${iconPx}" height="${iconPx}"`);
-    return `
-      <div class="tvcrow${isTop ? ' top' : ''}" style="padding:${padV}px ${padH}px; gap:${Math.round(rowH*0.22)}px;">
-        ${isTop ? `<span class="tvcrow-crown" style="font-size:${nameFs}px">&#x1F451;</span>` : ''}
-        <span class="tvav" style="background:${c}; width:${avatarPx}px; height:${avatarPx}px; font-size:${Math.round(avatarPx*0.42)}px;">${tvInitials(a.name)}</span>
-        <span class="tvcname" style="font-size:${nameFs}px;">${a.name}</span>
-        <span class="tvccount" style="font-size:${countFs}px;">${icon}${a.count}</span>
+        <span class="tvpstat">${badge}</span>
       </div>`;
   }).join('');
 }
@@ -3592,7 +3496,7 @@ function renderTVChart(){
   if(!barsEl) return;
 
   const data = computeCallsAnsweredThisWeek();
-  if(noteEl) noteEl.textContent = data.length ? 'calls · avg duration' : '';
+  if(noteEl) noteEl.textContent = data.length ? 'calls · avg duration · logoffs' : '';
 
   if(!data.length){
     yEl.innerHTML = '';
@@ -3620,16 +3524,16 @@ function renderTVChart(){
       <div class="tvbar" style="height:${d.count/ceilVal*100}%; background:${tvColorFor(d.name)}"></div>
     </div>`).join('');
 
-  const allNames = data.map(d => d.name);
   namesEl.innerHTML = '<div class="tvnames-pad"></div>' + data.map(d => {
     const c = tvColorFor(d.name);
     const dur = d.avgDurationMin != null ? fmtDur(d.avgDurationMin*60) : '—';
     return `
       <div class="tvncol">
-        <div class="tvnname" style="color:${c}">${tvShortDisplayName(d.name, allNames)}</div>
+        <div class="tvnname" style="color:${c}">${d.name.split(/\s+/)[0]}</div>
         <div class="tvnstats">
           <div class="tvnstat">${TV_ICON.calls(c)}${d.count}</div>
           <div class="tvnstat">${TV_ICON.dur(c)}${dur}</div>
+          <div class="tvnstat">${TV_ICON.off(c)}${d.logoffs}</div>
         </div>
       </div>`;
   }).join('');
@@ -3641,6 +3545,16 @@ function renderTVKpis(){
   if(!el) return;
   const data = computeCallsAnsweredThisWeek();
   const totalCalls = data.reduce((s,d) => s + d.count, 0);
+
+  // Weighted by each agent's call count, so a low-volume agent's long calls
+  // don't skew the team average.
+  let talkNum = 0, talkDen = 0;
+  for(const d of data){
+    if(d.avgDurationMin == null) continue;
+    talkNum += d.avgDurationMin * d.count;
+    talkDen += d.count;
+  }
+  const avgTalk = talkDen > 0 ? talkNum/talkDen : null;
 
   // Answer rate for the week from the stored MainReport days.
   const monday = mondayOf(Date.now()).getTime();
@@ -3659,6 +3573,7 @@ function renderTVKpis(){
   const kpis = [
     { v: totalCalls || '—', l: 'Calls answered this week' },
     { v: rate === null ? '—' : rate.toFixed(0)+'%', l: 'Answer rate this week', cls: rate !== null ? 'good' : '' },
+    { v: avgTalk === null ? '—' : fmtDur(avgTalk*60), l: 'Avg handle time this week' },
   ];
   el.innerHTML = kpis.map(k =>
     `<div class="tvkpi"><div class="tvkval ${k.cls||''}">${k.v}</div><div class="tvklbl">${k.l}</div></div>`).join('');
@@ -3680,7 +3595,7 @@ function renderTVKpis(){
   render();
   if(IS_TV) renderTV();
   refreshLiveReports();
-  setInterval(refreshLiveReports, 30 * 1000); // small static JSON files — cheap to poll often, keeps TV tiles near-live
+  setInterval(refreshLiveReports, 5 * 60 * 1000); // report data doesn't need second-level freshness
 })();
 </script>
 </body>
