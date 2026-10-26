@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Calls This Week</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@800;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* One-number wall screen, the phone counterpart of the L1 tickets wall: label, huge count,
+   two live figures, quiet freshness line. Deliberately dark (Munu navy) so it reads across a room on a TV. */
+:root {
+  --bg: #000743; --fg: #F9FBFF; --muted: #A9B4E0; --accent: #D6F3FF; --pink: #F1B7F2; --bad: #FF9A8B;
+  --tile: rgba(214,243,255,.07); --line: rgba(214,243,255,.16);
+  --display: "Fira Sans", Inter, system-ui, sans-serif; --text: Inter, system-ui, "Segoe UI", Arial, sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--text); }
+.wall { min-height: 100%; display: grid; place-items: center; text-align: center; padding-block: 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); box-sizing: border-box; }
+.inner { display: grid; gap: clamp(8px, 2vh, 24px); justify-items: center; }
+.label { margin: 0; font-size: clamp(18px, 3.2vw, 44px); font-weight: 600; letter-spacing: .01em; color: var(--accent); }
+.num { margin: 0; font: 900 clamp(110px, 24vw, 360px)/0.9 var(--display); font-variant-numeric: tabular-nums; letter-spacing: -.03em; color: var(--fg); }
+.num.wait, .live-num.wait { color: transparent; background: linear-gradient(90deg, rgba(214,243,255,.08), rgba(214,243,255,.18), rgba(214,243,255,.08)); border-radius: 24px; min-width: 2ch; }
+.since { margin: 0; font-size: clamp(14px, 1.8vw, 26px); color: var(--muted); }
+.ref { margin: 0; font-size: clamp(16px, 2.2vw, 32px); color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; }
+.ref b { font-weight: 700; color: var(--accent); }
+.live { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(10px, 2vw, 32px); margin-top: clamp(8px, 2vh, 24px); width: min(100%, 900px); }
+.tile { background: var(--tile); border: 1px solid var(--line); border-radius: 20px; padding: clamp(12px, 2.2vh, 28px) clamp(12px, 2vw, 28px); display: grid; gap: 4px; justify-items: center; }
+.live-label { margin: 0; font-size: clamp(13px, 1.5vw, 22px); color: var(--muted); font-weight: 500; }
+.live-num { margin: 0; font: 900 clamp(48px, 9vw, 140px)/1 var(--display); font-variant-numeric: tabular-nums; color: var(--fg); }
+.live-sub { margin: 0; min-height: 1.3em; font-size: clamp(12px, 1.3vw, 20px); color: var(--muted); font-variant-numeric: tabular-nums; }
+.tile.queued { border-color: var(--pink); background: rgba(241,183,242,.10); }
+.tile.queued .live-num { color: var(--pink); }
+.fresh { margin: clamp(8px, 2vh, 20px) 0 0; display: inline-flex; align-items: center; gap: 10px; font-size: clamp(12px, 1.2vw, 18px); color: var(--muted); font-variant-numeric: tabular-nums; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--pink); }
+.fresh.stale .dot { background: var(--bad); }
+.fresh.stale { color: var(--bad); }
+.msg { margin: 0; max-width: 46ch; font-size: clamp(14px, 1.4vw, 20px); color: var(--bad); }
+@media (prefers-reduced-motion: no-preference) {
+  .dot.beat { animation: beat 1.2s ease-out; }
+  @keyframes beat { 0% { transform: scale(1.8); opacity: .5; } 100% { transform: scale(1); opacity: 1; } }
+}
+</style>
+</head>
+<body>
+<main class="wall">
+  <div class="inner">
+    <p class="label">Calls answered this week</p>
+    <p class="num wait" id="num" aria-live="polite">000</p>
+    <p class="since" id="since">Since Monday</p>
+    <p class="ref" id="ref" hidden></p>
+    <div class="live">
+      <div class="tile">
+        <p class="live-label">Logged on the queue</p>
+        <p class="live-num wait" id="agents">00</p>
+        <p class="live-sub" id="agents-sub"></p>
+      </div>
+      <div class="tile" id="queue-tile">
+        <p class="live-label">Callers waiting</p>
+        <p class="live-num wait" id="waiting">00</p>
+        <p class="live-sub" id="waiting-sub"></p>
+      </div>
+    </div>
+    <p class="msg" id="msg" hidden></p>
+    <p class="fresh" id="fresh"><span class="dot" id="dot"></span><span id="fresh-txt">Loading…</span></p>
+  </div>
+</main>
+
+<script>
+(() => {
+  // Reads /team.json (MainReport, refreshed every minute) and /calls.json
+  // (LiveAgentOverview + LiveQueueCall, refreshed every few seconds).
+  const TEAM_EVERY = 30000, LIVE_EVERY = 4000;
+
+  // Where those live. Served by the server itself: same origin. Opened from the GitHub-hosted
+  // copy: the capture server's address, from ?live=… or else the one unifon-dashboard.html saved
+  // (same github.io origin, so the same localStorage key), falling back to localhost.
+  const BASE = (() => {
+    const norm = v => (v || '').trim().replace(/\/+$/, '');
+    const fromQuery = norm(new URLSearchParams(location.search).get('live'));
+    if (fromQuery) { try { localStorage.setItem('unifon-live-base-url', fromQuery); } catch (e) {} return fromQuery; }
+    if (location.protocol !== 'file:' && !location.hostname.endsWith('github.io')) return '';
+    let saved = '';
+    try { saved = norm(localStorage.getItem('unifon-live-base-url')); } catch (e) {}
+    return saved || 'http://localhost:8787';
+  })();
+
+  const $ = id => document.getElementById(id);
+  const pad = n => String(n).padStart(2, '0');
+  const clock = d => pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  const mmss = s => Math.floor(s / 60) + ':' + pad(s % 60);
+  const nf = new Intl.NumberFormat('nb-NO');
+  let lastAt = 0, teamFailed = false, liveFailed = false;
+
+  function setNum(el, n) {
+    el.classList.remove('wait');
+    const txt = nf.format(n);
+    if (el.textContent !== txt) el.textContent = txt;
+  }
+  function showError() {
+    const m = $('msg');
+    m.textContent = !(teamFailed || liveFailed) ? '' : BASE
+      ? 'Can\'t reach the capture server at ' + BASE + '. If the tunnel restarted, open this page with ?live=<new tunnel URL>. Trying again…'
+      : 'The wallboard server isn\'t answering. Trying again…';
+    m.hidden = !m.textContent;
+  }
+
+  async function getJSON(url) {
+    const res = await fetch(BASE + url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status);
+    return res.json();
+  }
+
+  async function loadTeam() {
+    try {
+      const t = await getJSON('/team.json');
+      teamFailed = false;
+      // The week total only appears once the server has backfilled the earlier days; keep the placeholder until then.
+      if (t.week) setNum($('num'), t.week.answered);
+      if (t.weekStart) {
+        const d = new Date(t.weekStart);
+        $('since').textContent = 'Since Monday ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) +
+          (t.today ? ' · ' + nf.format(t.today.answered) + ' today' : '');
+      }
+      const ref = $('ref');
+      if (t.lastWeekSameTime) {
+        ref.replaceChildren('Same time last week: ', Object.assign(document.createElement('b'), { textContent: nf.format(t.lastWeekSameTime.answered) }));
+        ref.hidden = false;
+      } else ref.hidden = true;
+    } catch (e) { teamFailed = true; }
+    showError();
+  }
+
+  async function loadLive() {
+    try {
+      const c = await getJSON('/calls.json');
+      liveFailed = false;
+      // LiveAgentOverview lists only agents set ready, one row per queue, so count people, not rows.
+      const agents = new Map();
+      for (const a of c.agents || []) agents.set(a.name, (agents.get(a.name) || false) || a.onCall);
+      const onCall = [...agents.values()].filter(Boolean).length;
+      setNum($('agents'), agents.size);
+      $('agents-sub').textContent = agents.size ? onCall + ' on a call · ' + (agents.size - onCall) + ' free' : 'Nobody logged on';
+
+      const waiting = (c.calls || []).filter(x => !x.answered);
+      const longest = waiting.reduce((m, x) => Math.max(m, x.seconds || 0), 0);
+      setNum($('waiting'), waiting.length);
+      $('waiting-sub').textContent = waiting.length ? 'Longest wait ' + mmss(longest) : 'Queue is empty';
+      $('queue-tile').classList.toggle('queued', waiting.length > 0);
+
+      const fresh = c.ts || Date.now();
+      if (fresh !== lastAt) {
+        lastAt = fresh;
+        const dot = $('dot'); dot.classList.remove('beat'); void dot.offsetWidth; dot.classList.add('beat');
+      }
+      paintFresh();
+    } catch (e) { liveFailed = true; }
+    showError();
+  }
+
+  function paintFresh() {
+    const f = $('fresh'), t = $('fresh-txt');
+    if (!lastAt) return;
+    const stale = Date.now() - lastAt > 60000;
+    f.classList.toggle('stale', stale);
+    t.textContent = (stale ? 'Not updated since ' : 'Updated ') + clock(new Date(lastAt)) + (stale ? '' : ' · live');
+  }
+  setInterval(paintFresh, 5000);
+
+  loadTeam(); setInterval(loadTeam, TEAM_EVERY);
+  loadLive(); setInterval(loadLive, LIVE_EVERY);
+})();
+</script>
+</body>
+</html>
